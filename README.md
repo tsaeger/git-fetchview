@@ -144,8 +144,25 @@ cargo xtask prep-release
 
 `deny` and `audit` need `cargo install cargo-deny cargo-audit`.
 
+### Toolchain and CI
+
+The toolchain is pinned. `rust-toolchain.toml` sets the Rust version (rustup reads
+it) and `flake.nix` reads the same file, so Nix and rustup agree. `flake.lock`
+pins nixpkgs and rust-overlay.
+
+```
+nix develop          # pinned Rust, cargo-deny, cargo-audit, git-cliff, git, node
+nix develop .#msrv   # Rust 1.88.0, the minimum supported version
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs `cargo xtask ci` inside that shell
+on Linux and macOS, a `cargo check` on 1.88.0, and `nix flake check`. To move the
+pins, edit `channel` in `rust-toolchain.toml`, or run `nix flake update`. The Nix
+shell covers Linux and Apple silicon; nixpkgs dropped Intel macOS.
+
 Tasks are tracked with [backlog.md](https://github.com/MrLesk/Backlog.md), installed
-locally from `package.json` (nothing global), so you need node and npm:
+locally from `package.json` (nothing global), so you need node and npm
+(`nix develop` provides them):
 
 ```
 npm ci              # once: installs backlog.md into node_modules

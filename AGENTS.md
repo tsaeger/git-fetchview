@@ -37,6 +37,16 @@ equivalent plain commands as a cut-and-paste trail. Linux and macOS are the prim
 - The single keymap is `tui/keys.rs` (`map` for single keys, `KeyParser` for counts and `gg`); change keys there, not in the state machine.
 - Themes live in `tui/theme.rs` (kanagawa default). Add a variant there and it appears in flags and config errors automatically.
 
+## Toolchain and CI
+
+- The Rust version is pinned in `rust-toolchain.toml`; `flake.nix` reads that file.
+  The minimum supported version is `rust-version` in `Cargo.toml`, and the
+  `msrv` shell (`nix develop .#msrv`) and the CI `msrv` job must use the same
+  number. Change all three together.
+- CI (`.github/workflows/ci.yml`) runs `cargo xtask ci` in `nix develop`. If you
+  add a check, add it to `cargo xtask ci` and CI picks it up.
+- Nix only sees files git tracks: `git add` new flake files before `nix flake ...`.
+
 ## Task tracking
 
 - Tasks are tracked with backlog.md, a local npm dev dependency (`package.json`,
