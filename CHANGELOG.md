@@ -13,6 +13,13 @@ All notable changes to this project are documented here. The format follows
 
 - Add remote and ref picker (ecbd218)
 - Use full remote urls in fetch and trail (db378c5)
+- **remotes:** Validate and identify remote urls (8f49e9a)
+- **remotes:** Read and write the remotes file (f2b2bed)
+- **remotes:** Read file pointers from git config (c42f22a)
+- **remotes:** Add merges, maintainers and url sources (fd3c0a0)
+- List collected remotes in the picker (17d24a2)
+- **tui:** Add a multi-select picker (a34741f)
+- Add the add, list and remove commands (c3b3587)
 
 ### Build
 
@@ -23,6 +30,10 @@ All notable changes to this project are documented here. The format follows
 ### Documentation
 
 - Add readme and agent instructions (7a00e38)
+- Regenerate changelog (47e1958)
+- Add design spec for remote sources (4d28ad9)
+- Add implementation plan for remote sources (78da3d9)
+- Describe collecting remotes (8ba41af)
 
 ### Miscellaneous
 
@@ -31,4 +42,5 @@ All notable changes to this project are documented here. The format follows
 ### Tests
 
 - Add fuzz targets for the git output parsers (37349d3)
+- Fuzz the remote source parsers (ee2ba54)
 
