@@ -143,6 +143,16 @@ cargo xtask prep-release
 ```
 
 `deny` and `audit` need `cargo install cargo-deny cargo-audit`.
+
+Tasks are tracked with [backlog.md](https://github.com/MrLesk/Backlog.md), installed
+locally from `package.json` (nothing global), so you need node and npm:
+
+```
+npm ci              # once: installs backlog.md into node_modules
+npx backlog board
+```
+
+Tasks live in `backlog/` and are committed.
 `changelog` needs `cargo install git-cliff`; `--check` fails if the file is stale,
 and `--tag v1.2.3` labels the unreleased commits for a release.
 

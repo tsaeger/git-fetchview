@@ -37,6 +37,17 @@ equivalent plain commands as a cut-and-paste trail. Linux and macOS are the prim
 - The single keymap is `tui/keys.rs` (`map` for single keys, `KeyParser` for counts and `gg`); change keys there, not in the state machine.
 - Themes live in `tui/theme.rs` (kanagawa default). Add a variant there and it appears in flags and config errors automatically.
 
+## Task tracking
+
+- Tasks are tracked with backlog.md, a local npm dev dependency (`package.json`,
+  `package-lock.json`). Do not install it globally: `npm ci`, then
+  `npx backlog ...`.
+- Tasks live in `backlog/` and are committed. Change them with the `backlog`
+  CLI. `auto_commit` is off, so task changes are committed under the normal
+  commit rules below.
+- `backlog/` is exempt from the SPDX header check: task files start with YAML
+  front matter, which must stay on line 1.
+
 ## Licensing
 
 - Every source file (`.rs`, `.toml`, `.md`, `.gitignore`) carries a two-line SPDX header

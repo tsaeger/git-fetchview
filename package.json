@@ -1,0 +1,8 @@
+{
+  "name": "git-fetchview",
+  "private": true,
+  "description": "Local dev tooling for git-fetchview (task tracking with backlog.md).",
+  "devDependencies": {
+    "backlog.md": "^1.55.1"
+  }
+}

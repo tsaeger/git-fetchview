@@ -30,6 +30,9 @@ perf.data*
 *.swp
 *~
 
+# Node tooling (backlog.md)
+/node_modules/
+
 # Local env
 .env
 .env.*
