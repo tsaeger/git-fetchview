@@ -26,6 +26,10 @@ enum Style {
 
 impl Style {
     fn of(path: &str) -> Option<Self> {
+        // backlog.md task files start with YAML front matter.
+        if path.starts_with("backlog/") {
+            return None;
+        }
         let name = Path::new(path).file_name()?.to_str()?;
         if name == "Cargo.lock" || name == "LICENSE" {
             return None;
@@ -138,6 +142,10 @@ mod tests {
         assert!(matches!(Style::of(".gitignore"), Some(Style::Hash)));
         assert!(matches!(Style::of("README.md"), Some(Style::Html)));
         assert!(Style::of("LICENSE").is_none());
+        // backlog.md task files start with YAML front matter, so no header.
+        assert!(Style::of("backlog/tasks/task-1 - Something.md").is_none());
+        assert!(Style::of("backlog/docs/notes.md").is_none());
+        assert!(Style::of("docs/backlog/notes.md").is_some());
         assert!(Style::of("Cargo.lock").is_none());
     }
 
