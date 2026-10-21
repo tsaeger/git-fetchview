@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Tom Saeger <tom.saeger@gmail.com>
+
+edition = "2024"
+use_field_init_shorthand = true

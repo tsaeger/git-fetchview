@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Tom Saeger <tom.saeger@gmail.com>
+
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Coverage / profiling / mutation
+*.profraw
+*.profdata
+/coverage/
+/mutants.out*/
+flamegraph.svg
+perf.data*
+
+# cargo-fuzz (keep targets, drop build output and generated inputs)
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/artifacts/
+/fuzz/coverage/
+
+# Release staging
+/dist/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local env
+.env
+.env.*
+
+# Local switch: skip the commit-message approval prompt (see AGENTS.md)
+/.auto-approve-commit
