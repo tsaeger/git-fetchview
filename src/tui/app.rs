@@ -262,11 +262,8 @@ impl App {
         match action {
             Action::Char(c) => self.list_mut().push(c),
             Action::Backspace => self.list_mut().pop(),
-            Action::Enter => self.typing = false,
-            Action::Back => {
-                self.list_mut().clear();
-                self.typing = false;
-            }
+            // Both leave the box. The text stays, so the filter stays.
+            Action::Enter | Action::Back => self.typing = false,
             _ => {}
         }
     }
@@ -587,15 +584,32 @@ mod tests {
     }
 
     #[test]
-    fn esc_while_typing_abandons_the_search_only() {
+    fn esc_and_enter_leave_the_search_box_and_keep_the_text() {
+        for leave in [Action::Back, Action::Enter] {
+            let mut a = app();
+            a.update(Action::Enter, &mut refs);
+            a.update(Action::Search, &mut refs);
+            a.update(Action::Char('v'), &mut refs);
+            a.update(leave, &mut refs);
+            assert!(!a.typing());
+            assert_eq!(a.list().filter(), "v");
+            assert_eq!(a.level(), Level::Refs, "stays on the refs list");
+            assert_eq!(a.list().visible().len(), 1, "the filter still applies");
+        }
+    }
+
+    #[test]
+    fn editing_again_continues_from_the_kept_text() {
         let mut a = app();
-        a.update(Action::Enter, &mut refs);
         a.update(Action::Search, &mut refs);
-        a.update(Action::Char('x'), &mut refs);
+        a.update(Action::Char('u'), &mut refs);
         a.update(Action::Back, &mut refs);
-        assert!(!a.typing());
+        a.update(Action::Search, &mut refs);
+        a.update(Action::Char('p'), &mut refs);
+        assert_eq!(a.list().filter(), "up");
+        a.update(Action::Back, &mut refs);
+        a.update(Action::Clear, &mut refs);
         assert_eq!(a.list().filter(), "");
-        assert_eq!(a.level(), Level::Refs);
     }
 
     #[test]

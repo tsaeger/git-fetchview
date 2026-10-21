@@ -197,11 +197,8 @@ impl Select {
         match action {
             Action::Char(c) => self.list.push(c),
             Action::Backspace => self.list.pop(),
-            Action::Enter => self.typing = false,
-            Action::Back => {
-                self.list.clear();
-                self.typing = false;
-            }
+            // Both leave the box. The text stays, so the filter stays.
+            Action::Enter | Action::Back => self.typing = false,
             _ => {}
         }
     }
@@ -331,13 +328,13 @@ mod tests {
     }
 
     #[test]
-    fn esc_while_typing_abandons_the_search() {
+    fn esc_while_typing_leaves_the_box_and_keeps_the_text() {
         let mut s = Select::new(rows());
         s.update(Action::Search);
         s.update(Action::Char('x'));
         s.update(Action::Back);
         assert!(!s.typing());
-        assert_eq!(s.list().filter(), "");
+        assert_eq!(s.list().filter(), "x");
     }
 
     #[test]

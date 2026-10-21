@@ -191,19 +191,53 @@ fn sort_span<'a>(order: SortOrder, reversed: bool, theme: &Theme) -> Option<Span
     sort_note(order, reversed).map(|note| Span::styled(note, Style::new().fg(theme.accent)))
 }
 
-fn typing_line<'a>(filter: &str, theme: &Theme) -> Line<'a> {
+/// The search box: always on the top line, so the filter in force is never
+/// something to hunt for.
+fn search_line<'a>(list: &List, typing: bool, theme: &Theme) -> Line<'a> {
+    let label = Span::styled("search: ", Style::new().fg(theme.accent));
+    if typing {
+        return Line::from(vec![
+            label,
+            Span::raw(list.filter().to_owned()),
+            Span::styled("█", Style::new().fg(theme.accent)),
+        ]);
+    }
+    if list.filter().is_empty() {
+        return Line::from(vec![
+            label,
+            Span::styled("press / or i to search", Style::new().fg(theme.dim)),
+        ]);
+    }
     Line::from(vec![
-        Span::styled("/", Style::new().fg(theme.accent)),
-        Span::raw(filter.to_owned()),
-        Span::styled("█", Style::new().fg(theme.accent)),
+        label,
+        Span::raw(list.filter().to_owned()),
+        Span::styled(
+            format!("  {} of {}", list.visible().len(), list.total()),
+            Style::new().fg(theme.dim),
+        ),
     ])
+}
+
+fn typing_hints(theme: &Theme) -> Line<'static> {
+    Line::from(Span::styled(
+        "type to filter  enter/esc done",
+        Style::new().fg(theme.dim),
+    ))
 }
 
 /// Draw the picker.
 pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
     frame.render_widget(Block::new().style(base(theme)), frame.area());
-    let [body, status] =
-        Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
+    let [search, body, status] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .areas(frame.area());
+    frame.render_widget(
+        Paragraph::new(search_line(app.list(), app.typing(), theme)).style(base(theme)),
+        search,
+    );
 
     let title = match (app.level(), app.chosen_remote()) {
         (Level::Refs, Some(remote)) => format!(" refs of {remote} "),
@@ -229,7 +263,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
     let line = if let Some(err) = app.error() {
         Line::from(Span::styled(err.to_owned(), Style::new().fg(theme.error)))
     } else if app.typing() {
-        typing_line(app.list().filter(), theme)
+        typing_hints(theme)
     } else if app.sorting() {
         Line::from(sort_bar(app.list(), theme))
     } else if let Some(notice) = app.notice() {
@@ -250,15 +284,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
                 Style::new().fg(theme.accent),
             ));
         }
-        if app.list().filter().is_empty() {
-            spans.push(Span::styled(HINTS, Style::new().fg(theme.dim)));
-        } else {
-            spans.push(Span::styled(
-                format!("/{}", app.list().filter()),
-                Style::new().fg(theme.accent),
-            ));
-            spans.push(Span::styled("  c clear", Style::new().fg(theme.dim)));
-        }
+        spans.push(Span::styled(HINTS, Style::new().fg(theme.dim)));
         Line::from(spans)
     };
     frame.render_widget(Paragraph::new(line).style(base(theme)), status);
@@ -267,8 +293,16 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
 /// Draw the multi-select.
 pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pending: &str) {
     frame.render_widget(Block::new().style(base(theme)), frame.area());
-    let [body, status] =
-        Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
+    let [search, body, status] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .areas(frame.area());
+    frame.render_widget(
+        Paragraph::new(search_line(select.list(), select.typing(), theme)).style(base(theme)),
+        search,
+    );
 
     let rows = select
         .list()
@@ -301,7 +335,7 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pendin
     );
 
     let line = if select.typing() {
-        typing_line(select.list().filter(), theme)
+        typing_hints(theme)
     } else if select.sorting() {
         Line::from(sort_bar(select.list(), theme))
     } else {
@@ -331,6 +365,7 @@ mod tests {
     use crate::git::{Remote, RemoteRef};
     use crate::tui::app::Loaded;
     use crate::tui::keys::Action;
+    use crate::tui::select::Row;
     use crate::tui::theme::ThemeName;
 
     #[test]
@@ -413,8 +448,8 @@ mod tests {
             .find(|l| l.contains("merge"))
             .unwrap()
             .find("merge");
-        assert_eq!(tags_at, lines[1].find("tags"));
-        assert!(lines[1].contains("name") && lines[1].contains("url"));
+        assert_eq!(tags_at, lines[2].find("tags"));
+        assert!(lines[2].contains("name") && lines[2].contains("url"));
     }
 
     #[test]
@@ -431,7 +466,7 @@ mod tests {
         }
         let theme = Theme::from(ThemeName::default());
         let lines = screen(60, 6, |f| draw(f, &app, &theme, ""));
-        assert!(lines[1].contains("url \u{2193}"), "{:?}", lines[1]);
+        assert!(lines[2].contains("url \u{2193}"), "{:?}", lines[2]);
     }
 
     #[test]
@@ -463,5 +498,68 @@ mod tests {
         let theme = Theme::from(ThemeName::default());
         let lines = screen(90, 6, |f| draw(f, &app, &theme, ""));
         assert!(lines.last().unwrap().contains("412 hidden"), "{lines:?}");
+    }
+
+    fn searched(typing: bool) -> App {
+        let mut app = App::new(vec![
+            remote("xray", "https://h/x", &[]),
+            remote("beta", "https://h/b", &[]),
+        ]);
+        let mut no_refs = |_: &Remote| Ok(Loaded::default());
+        app.update(Action::Search, &mut no_refs);
+        app.update(Action::Char('x'), &mut no_refs);
+        if !typing {
+            app.update(Action::Back, &mut no_refs);
+        }
+        app
+    }
+
+    #[test]
+    fn the_search_box_sits_at_the_top_with_a_hint_while_empty() {
+        let app = App::new(vec![remote("a", "https://h/a", &[])]);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(60, 8, |f| draw(f, &app, &theme, ""));
+        assert!(
+            lines[0].contains("search") && lines[0].contains("/ or i"),
+            "{:?}",
+            lines[0]
+        );
+    }
+
+    #[test]
+    fn the_search_box_shows_the_text_and_how_many_rows_match() {
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(60, 8, |f| draw(f, &searched(false), &theme, ""));
+        assert!(lines[0].contains("search: x"), "{:?}", lines[0]);
+        assert!(lines[0].contains("1 of 2"), "{:?}", lines[0]);
+        assert!(
+            !lines[0].contains('\u{2588}'),
+            "no cursor outside edit mode"
+        );
+        assert!(lines.iter().skip(1).all(|l| !l.contains("beta")));
+    }
+
+    #[test]
+    fn editing_shows_a_cursor_and_the_keys_to_leave() {
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(60, 8, |f| draw(f, &searched(true), &theme, ""));
+        assert!(lines[0].contains("search: x\u{2588}"), "{:?}", lines[0]);
+        assert!(lines.last().unwrap().contains("esc"), "{lines:?}");
+    }
+
+    #[test]
+    fn the_select_picker_has_the_box_too() {
+        let mut s = Select::new(vec![Row {
+            cells: vec!["x".into()],
+            name: "x".into(),
+            url: "u".into(),
+            tags: String::new(),
+            have: false,
+        }]);
+        s.update(Action::Search);
+        s.update(Action::Char('x'));
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(60, 8, |f| draw_select(f, &s, &theme, ""));
+        assert!(lines[0].contains("search: x"), "{:?}", lines[0]);
     }
 }

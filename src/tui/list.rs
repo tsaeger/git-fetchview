@@ -169,6 +169,12 @@ impl List {
         self.cursor = 0;
     }
 
+    /// How many rows there are, before filtering.
+    #[must_use]
+    pub fn total(&self) -> usize {
+        self.labels.len()
+    }
+
     /// The current filter text.
     #[must_use]
     pub fn filter(&self) -> &str {
@@ -375,6 +381,13 @@ fn matches(label: &str, filter: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn total_counts_rows_the_filter_hides() {
+        let mut l = List::new(vec!["a".into(), "b".into()]);
+        l.push('a');
+        assert_eq!((l.visible().len(), l.total()), (1, 2));
+    }
+
     use super::*;
     use crate::tui::keys::Action;
 

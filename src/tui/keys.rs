@@ -47,11 +47,11 @@ pub enum Action {
     PageUp,
     /// Drop in: select and go to the next level.
     Enter,
-    /// Drop out one level (or abandon a search being typed).
+    /// Drop out one level (or leave the search box, keeping its text).
     Back,
     /// Quit.
     Quit,
-    /// Start typing a search.
+    /// Start editing the search box.
     Search,
     /// Clear the search / filter.
     Clear,
@@ -232,7 +232,7 @@ fn map_normal(code: KeyCode) -> Option<Action> {
         KeyCode::Char('a') => Some(Action::ToggleAll),
         KeyCode::Char('s') => Some(Action::Sort),
         KeyCode::Char('r') => Some(Action::Reverse),
-        KeyCode::Char('/') => Some(Action::Search),
+        KeyCode::Char('/' | 'i') => Some(Action::Search),
         KeyCode::Char('c') => Some(Action::Clear),
         KeyCode::Char('q') => Some(Action::Quit),
         _ => None,
@@ -266,6 +266,21 @@ mod tests {
             last = parser.feed(key(code), Mode::Normal);
         }
         last
+    }
+
+    #[test]
+    fn i_and_slash_both_start_editing_the_search() {
+        for c in ['i', '/'] {
+            assert_eq!(
+                map(key(KeyCode::Char(c)), Mode::Normal),
+                Some(Action::Search)
+            );
+        }
+        // While editing, `i` is just a letter.
+        assert_eq!(
+            map(key(KeyCode::Char('i')), Mode::Typing),
+            Some(Action::Char('i'))
+        );
     }
 
     #[allow(clippy::unnecessary_wraps)] // reads as the parser's return type

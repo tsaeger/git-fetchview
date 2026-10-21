@@ -39,13 +39,14 @@ A password embedded in a URL is left out of the printed commands.
 | `Ctrl-f` `Ctrl-b`       | a page down / up (also `PageDown` `PageUp`) |
 | `l` / `→` / `Enter`     | drop in: select and go to the next level    |
 | `h` / `←` / `Esc`       | drop out (does nothing at the top level)    |
-| `/`                     | search (substring, case-insensitive)        |
+| `/` / `i`               | edit the search box at the top (substring, case-insensitive) |
+| `Esc` / `Enter`         | in the search box: leave it, keeping the text |
 | `c`                     | clear the search                            |
 | `s`                     | sort mode: `h` `l` pick the column, `r` reverses, `s` `Esc` `Enter` finish |
 | `r`                     | reverse the current order                   |
 | `q`                     | quit, from anywhere                         |
 
-Keys typed but not finished (`5`, `g`) show at the left of the status line, and `Esc` drops them. While typing a search, `Enter` confirms it and `Esc` abandons it. In sort mode the status line shows the columns (`default`, `label`, `url`, `tags`; refs have `default` and `label`) with the active one in brackets, and the list re-sorts as you move. Labels sort naturally, so `v6.9` comes before `v6.10`, and `r` after `s` puts the newest tags first. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. Moving the sort column keeps the cursor on the same row, and `r` puts it at the top of the list.
+Keys typed but not finished (`5`, `g`) show at the left of the status line, and `Esc` drops them. The search box is always on the top line and shows how many rows match. While you edit it, characters are text (so `q` types a `q`) and the list filters as you type. `Esc` or `Enter` leaves the box and the filter stays; `c` clears it. In sort mode the status line shows the columns (`default`, `label`, `url`, `tags`; refs have `default` and `label`) with the active one in brackets, and the list re-sorts as you move. Labels sort naturally, so `v6.9` comes before `v6.10`, and `r` after `s` puts the newest tags first. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. Moving the sort column keeps the cursor on the same row, and `r` puts it at the top of the list.
 
 ## Collecting remotes
 
