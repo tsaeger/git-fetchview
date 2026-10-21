@@ -17,6 +17,14 @@ equivalent plain commands as a cut-and-paste trail. Linux and macOS are the prim
 - **The trail can't drift:** every external call is a `git::Cmd`; its `Display` is what is printed and what is run.
 - **Automation:** all CI/dev tasks are `cargo xtask <task>` (see README). CI should call xtask, not raw cargo.
 - Lints are workspace-wide: `unsafe` forbidden, clippy pedantic, `missing_docs` warn; `xtask clippy` denies warnings.
+- **Collected remotes:** `src/remotes/` holds pure parsers (`entry`, `file`,
+  `source/*`) and the git-config layer (`registry`). Keep parsers free of I/O
+  so they stay fuzzable. A new source implements `remotes::source::Source` and
+  gets a `fetchview add <name>` subcommand in `cli.rs` and `commands.rs`.
+- **Untrusted URLs:** every URL from a source or a remotes file goes through
+  `remotes::entry::validate_url` before it is stored or passed to git.
+- `tui::select` is the multi-select. `Enter` confirms there; everywhere else it
+  drops in.
 
 ## TUI keybinds (keep consistent across every level)
 

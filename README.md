@@ -40,6 +40,47 @@ A password embedded in a URL is left out of the printed commands.
 
 While typing a search, `Enter` confirms it and `Esc` abandons it.
 
+## Collecting remotes
+
+A kernel tree has far more interesting repos than any clone has remotes.
+`git fetchview add` collects them into files, and the picker lists them after
+your real remotes.
+
+```
+git fetchview add merges -n 500          # pull URLs from merge commits in HEAD
+git fetchview add merges v6.11..v6.12    # or from a range
+git fetchview add maintainers            # T: git lines of ./MAINTAINERS
+git fetchview add url https://git.kernel.org/pub/scm/linux/kernel/git/netdev/net.git
+git fetchview add url --from-file urls.txt
+git fetchview list
+git fetchview remove netdev/net
+```
+
+`add` shows a picker of what it found: `Space` toggles a row, `a` toggles every
+visible row, `/` filters, `Enter` writes, `q` writes nothing. Rows already
+collected show as `(have)`. `--all` adds everything new without the picker, and
+`--dry-run` prints what would be written.
+
+Entries are written to `.git/fetchview.remotes` (shared by linked worktrees) and
+that path is added to `fetchview.remotes` in the local config. To keep one set
+for every clone:
+
+```
+git fetchview add --file ~/.local/share/fetchview/kernel.remotes --global merges
+```
+
+`fetchview.remotes` can list any number of files, at any config level. A
+relative path is relative to the config file that names it.
+
+Each line of a remotes file is `url<TAB>label<TAB>tags`. Lines starting with `#`
+are comments and are kept when the file is rewritten. The label defaults to the
+last two path segments (`netdev/net`), and the tags record where the entry came
+from, so `/maintainers` in the picker shows only those.
+
+URLs from merge subjects and `MAINTAINERS` are untrusted. Only `https`, `http`,
+`git`, `ssh` and scp-style URLs are accepted. Anything else, such as `ext::`
+helpers or `file:` URLs, is rejected and counted in the summary.
+
 ## Configuration
 
 Everything lives in `git config`, so the usual system → global → local hierarchy applies:
