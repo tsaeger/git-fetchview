@@ -10,6 +10,7 @@ pub mod cli;
 pub mod config;
 pub mod error;
 pub mod git;
+pub mod remotes;
 pub mod tui;
 
 pub use error::{Error, Result};
