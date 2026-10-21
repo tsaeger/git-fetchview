@@ -12,6 +12,13 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - Add remote and ref picker (ecbd218)
+- Use full remote urls in fetch and trail (db378c5)
+
+### Build
+
+- Add git-cliff changelog and xtask task (a0bd686)
+- Make deny and audit tasks usable (b3eb8e7)
+- Set minimum supported rust version to 1.88 (a6dba5f)
 
 ### Documentation
 
