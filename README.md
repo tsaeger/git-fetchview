@@ -18,10 +18,13 @@ It prints the plain commands as it goes, so you can paste them and do the same
 thing without this tool:
 
 ```
-git ls-remote origin
-git fetch origin refs/pull/123/head
+git ls-remote git@github.com:someone/project.git
+git fetch git@github.com:someone/project.git refs/pull/123/head
 tig FETCH_HEAD
 ```
+
+The trail uses the remote's full URL, not its name, so it works for anyone.
+A password embedded in a URL is left out of the printed commands.
 
 ## Keys
 

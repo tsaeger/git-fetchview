@@ -33,6 +33,8 @@ pub enum Flow {
 pub struct Selection {
     /// Remote name.
     pub remote: String,
+    /// The remote's fetch URL, with any `insteadOf` rewrites applied.
+    pub url: String,
     /// Full ref name.
     pub refname: String,
 }
@@ -186,9 +188,10 @@ impl App {
                 Flow::Continue
             }
             Level::Refs => {
-                let remote = self.chosen_remote().unwrap_or_default().to_owned();
+                let chosen = &self.remotes[self.chosen.unwrap_or_default()];
                 Flow::Done(Selection {
-                    remote,
+                    remote: chosen.name.clone(),
+                    url: chosen.url.clone(),
                     refname: self.refs[index].name.clone(),
                 })
             }
@@ -264,6 +267,7 @@ mod tests {
             flow,
             Flow::Done(Selection {
                 remote: "up".into(),
+                url: "u2".into(),
                 refname: "refs/heads/dev".into()
             })
         );

@@ -128,6 +128,23 @@ pub fn shell_quote(s: &str) -> String {
     }
 }
 
+/// Drop a password embedded in a `scheme://user:password@host/...` URL.
+///
+/// The trail is meant to be pasted to other people, so it must not carry
+/// credentials. The user name is kept, and git will prompt for the password.
+#[must_use]
+pub fn redact_url(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_owned();
+    };
+    let (authority, path) = rest.find('/').map_or((rest, ""), |i| rest.split_at(i));
+    let Some((userinfo, host)) = authority.rsplit_once('@') else {
+        return url.to_owned();
+    };
+    let user = userinfo.split_once(':').map_or(userinfo, |(user, _)| user);
+    format!("{scheme}://{user}@{host}{path}")
+}
+
 /// A configured git remote.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Remote {
@@ -191,7 +208,7 @@ pub fn remotes() -> Result<Vec<Remote>> {
     }
 }
 
-/// List the refs a remote advertises.
+/// List the refs a remote advertises. `remote` is a name or a URL.
 ///
 /// # Errors
 /// Command failures, or [`Error::NoRefs`].
@@ -223,6 +240,21 @@ mod tests {
             "git fetch origin refs/pull/1/head"
         );
         assert_eq!(Cmd::tig_fetch_head().to_string(), "tig FETCH_HEAD");
+    }
+
+    #[test]
+    fn redacts_embedded_passwords_only() {
+        assert_eq!(
+            redact_url("https://bob:s3cret@host.example/a/b.git"),
+            "https://bob@host.example/a/b.git"
+        );
+        assert_eq!(redact_url("https://host/a/b.git"), "https://host/a/b.git");
+        assert_eq!(redact_url("https://tok@host/a"), "https://tok@host/a");
+        assert_eq!(
+            redact_url("git@github.com:a/b.git"),
+            "git@github.com:a/b.git"
+        );
+        assert_eq!(redact_url("/srv/git/repo"), "/srv/git/repo");
     }
 
     #[test]

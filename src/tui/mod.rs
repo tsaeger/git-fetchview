@@ -34,7 +34,7 @@ fn run(
     app: &mut App,
     theme: &Theme,
 ) -> Result<Option<Selection>> {
-    let mut load = |remote: &Remote| git::remote_refs(&remote.name);
+    let mut load = |remote: &Remote| git::remote_refs(&remote.url);
     loop {
         terminal.draw(|frame| ui::draw(frame, app, theme))?;
         let Event::Key(key) = event::read()? else {

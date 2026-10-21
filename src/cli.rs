@@ -77,13 +77,16 @@ fn pick_and_view(theme_flag: Option<ThemeName>) -> Result<()> {
         return Ok(());
     };
 
-    let ls_remote = Cmd::ls_remote(&selection.remote);
-    let fetch = Cmd::fetch(&selection.remote, &selection.refname);
+    // Use the expanded URL rather than the remote name, so the trail works
+    // for anyone, not only in a clone that happens to have this remote.
+    let fetch = Cmd::fetch(&selection.url, &selection.refname);
     let tig = Cmd::tig_fetch_head();
 
     // The trail: paste these to do the same thing without git-fetchview.
-    eprintln!("{ls_remote}");
-    eprintln!("{fetch}");
+    // It is shared with others, so embedded passwords are removed.
+    let shared_url = git::redact_url(&selection.url);
+    eprintln!("{}", Cmd::ls_remote(&shared_url));
+    eprintln!("{}", Cmd::fetch(&shared_url, &selection.refname));
     eprintln!("{tig}");
 
     fetch.status()?;
