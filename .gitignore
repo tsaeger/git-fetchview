@@ -36,3 +36,4 @@ perf.data*
 
 # Local switch: skip the commit-message approval prompt (see AGENTS.md)
 /.auto-approve-commit
+/_preview/
