@@ -121,8 +121,14 @@ fn run(task: Task) -> Result<()> {
                 .env("RUSTDOCFLAGS", "-D warnings");
             exec(cmd)
         }
-        Task::Deny => cargo(&["deny", "check"]),
-        Task::Audit => cargo(&["audit"]),
+        Task::Deny => {
+            require_subcommand("deny", "cargo-deny")?;
+            cargo(&["deny", "--workspace", "check", "--hide-inclusion-graph"])
+        }
+        Task::Audit => {
+            require_subcommand("audit", "cargo-audit")?;
+            cargo(&["audit"])
+        }
         Task::Miri => cargo(&["+nightly", "miri", "test", "--workspace"]),
         Task::Fuzz { target, extra } => {
             let mut args = vec!["+nightly", "fuzz", "run", &target];
@@ -188,6 +194,19 @@ fn dist() -> Result<()> {
     }
     eprintln!("wrote target/man and target/completions");
     Ok(())
+}
+
+/// Fail early with an install hint when a cargo subcommand is missing.
+fn require_subcommand(name: &str, package: &str) -> Result<()> {
+    let found = Command::new("cargo")
+        .args([name, "--version"])
+        .output()
+        .is_ok_and(|out| out.status.success());
+    if found {
+        Ok(())
+    } else {
+        bail!("`cargo {name}` is not installed (cargo install --locked {package})")
+    }
 }
 
 fn cargo(args: &[&str]) -> Result<()> {
