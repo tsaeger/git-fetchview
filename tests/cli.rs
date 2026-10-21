@@ -385,3 +385,19 @@ fn a_bad_viewer_in_git_config_is_reported_as_a_config_problem() {
     assert!(!out.status.success());
     assert!(stderr(&out).contains("fetchview.theme"), "{}", stderr(&out));
 }
+
+#[test]
+fn the_same_kernel_tree_with_an_empty_port_is_listed_once() {
+    let repo = Repo::new();
+    let out = repo.fv(&[
+        "add",
+        "--all",
+        "url",
+        "git://git.kernel.org:/pub/scm/fs/xfs/xfs-linux",
+        "git://git.kernel.org/pub/scm/fs/xfs/xfs-linux",
+    ]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let file = repo.remotes_file();
+    assert_eq!(file.lines().count(), 1, "{file}");
+    assert!(file.starts_with("git://git.kernel.org/pub/scm/fs/xfs/xfs-linux"));
+}

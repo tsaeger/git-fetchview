@@ -108,6 +108,22 @@ mod tests {
     }
 
     #[test]
+    fn both_spellings_of_one_kernel_tree_collapse_to_the_clean_url() {
+        let scan = collect(
+            [
+                "git://git.kernel.org:/pub/scm/fs/xfs/xfs-linux",
+                "git://git.kernel.org/pub/scm/fs/xfs/xfs-linux",
+            ],
+            "merge",
+        );
+        assert_eq!(scan.entries.len(), 1);
+        assert_eq!(
+            scan.entries[0].url,
+            "git://git.kernel.org/pub/scm/fs/xfs/xfs-linux"
+        );
+    }
+
+    #[test]
     fn dedupe_keeps_ssh_separate() {
         let out = dedupe(vec![
             Entry::new("https://h/p/x", "t"),

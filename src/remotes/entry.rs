@@ -108,7 +108,7 @@ pub fn validate_url(raw: &str) -> Result<String, Rejected> {
         }
         check_host(host_of(head))?;
     }
-    Ok(redact_url(url))
+    Ok(drop_empty_port(&redact_url(url)))
 }
 
 /// `ext::...`, `fd::...` and similar: git runs a helper for these.
@@ -148,6 +148,24 @@ fn host_of(authority: &str) -> &str {
         )
 }
 
+/// `host:` -> `host`: a colon with no port number means the default port.
+/// A lone trailing colon only; `[::1]` and `host::` are left alone.
+fn strip_empty_port(authority: &str) -> &str {
+    authority
+        .strip_suffix(':')
+        .filter(|rest| !rest.ends_with(':'))
+        .unwrap_or(authority)
+}
+
+/// Drop an empty port from a `scheme://host:/path` URL.
+fn drop_empty_port(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_owned();
+    };
+    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    format!("{scheme}://{}{path}", strip_empty_port(authority))
+}
+
 fn trim_path(path: &str) -> String {
     let path = path.trim_end_matches('/');
     let path = path.strip_suffix(".git").unwrap_or(path);
@@ -156,7 +174,8 @@ fn trim_path(path: &str) -> String {
 
 /// Identity of a repo: two URLs with the same key name the same repo.
 ///
-/// The host is lowercased and a trailing `/` or `.git` is ignored. For
+/// The host is lowercased, an empty port (`host:/path`) and a trailing `/`
+/// or `.git` are ignored. For
 /// `http`, `https` and `git` the scheme and user are ignored too. `ssh://`
 /// and scp-style URLs keep theirs, since they are not interchangeable.
 #[must_use]
@@ -165,6 +184,7 @@ pub fn key(url: &str) -> String {
     if let Some((scheme, rest)) = url.split_once("://") {
         let scheme = scheme.to_ascii_lowercase();
         let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+        let authority = strip_empty_port(authority);
         let path = trim_path(path);
         if WEB_SCHEMES.contains(&scheme.as_str()) {
             format!("{}{path}", hostport(authority).to_ascii_lowercase())
@@ -275,6 +295,39 @@ mod tests {
         let c = key("HTTPS://GIT.Kernel.org/pub/scm/x/net");
         assert_eq!(a, b);
         assert_eq!(b, c);
+    }
+
+    #[test]
+    fn an_empty_port_does_not_make_a_different_repo() {
+        // From the kernel's own history: a colon after the host, then a path.
+        let odd = "git://git.kernel.org:/pub/scm/fs/xfs/xfs-linux";
+        let normal = "git://git.kernel.org/pub/scm/fs/xfs/xfs-linux";
+        assert_eq!(key(odd), key(normal));
+        assert_eq!(key("ssh://git@host:/a/b"), key("ssh://git@host/a/b"));
+        assert_eq!(key("ssh://[::1]:/a/b"), key("ssh://[::1]/a/b"));
+        assert_eq!(derive_label(odd), derive_label(normal));
+    }
+
+    #[test]
+    fn a_real_port_still_matters() {
+        assert_ne!(key("https://h:8443/p/x"), key("https://h/p/x"));
+    }
+
+    #[test]
+    fn validate_accepts_an_empty_port_and_drops_it_from_the_stored_url() {
+        assert_eq!(
+            validate_url("git://git.kernel.org:/pub/scm/fs/xfs/xfs-linux").as_deref(),
+            Ok("git://git.kernel.org/pub/scm/fs/xfs/xfs-linux")
+        );
+        assert_eq!(
+            validate_url("ssh://[::1]:/a/b").as_deref(),
+            Ok("ssh://[::1]/a/b")
+        );
+        assert_eq!(
+            validate_url("https://h:8443/x").as_deref(),
+            Ok("https://h:8443/x")
+        );
+        assert_eq!(validate_url("https://h/x").as_deref(), Ok("https://h/x"));
     }
 
     #[test]
