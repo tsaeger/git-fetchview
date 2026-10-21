@@ -4,3 +4,4 @@
 //! Remotes collected outside `.git/config`, kept in files.
 
 pub mod entry;
+pub mod file;

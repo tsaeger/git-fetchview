@@ -4,6 +4,7 @@
 //! Error type for the library.
 
 use std::io;
+use std::path::PathBuf;
 use std::process::ExitStatus;
 
 /// Everything that can go wrong in `git-fetchview`.
@@ -54,6 +55,16 @@ pub enum Error {
         value: String,
         /// Why it was rejected.
         reason: String,
+    },
+
+    /// Reading or writing a file failed.
+    #[error("{}: {source}", .path.display())]
+    Io {
+        /// The file involved.
+        path: PathBuf,
+        /// The underlying OS error.
+        #[source]
+        source: io::Error,
     },
 
     /// Terminal I/O failed.

@@ -48,3 +48,6 @@ lto = "fat"         # whole-program link-time optimization
 codegen-units = 1   # better optimization, slower build
 panic = "abort"     # drop unwinding machinery
 strip = "symbols"   # remove symbols and debuginfo
+
+[dev-dependencies]
+tempfile = "3.27.0"
