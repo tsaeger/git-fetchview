@@ -3,6 +3,8 @@
 
 //! A filterable list with a cursor.
 
+use crate::tui::keys::Action;
+
 /// How the rows are ordered. `s` cycles through them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SortOrder {
@@ -169,6 +171,46 @@ impl List {
         self.cursor = self.cursor.saturating_sub(1);
     }
 
+    /// Move the cursor by `delta` rows, stopping at either end.
+    pub fn move_by(&mut self, delta: isize) {
+        let last = self.visible().len().saturating_sub(1);
+        self.cursor = self.cursor.saturating_add_signed(delta).min(last);
+    }
+
+    /// Put the cursor on a 1-based row, or the last row if it is past the end.
+    pub fn goto(&mut self, row: usize) {
+        let last = self.visible().len().saturating_sub(1);
+        self.cursor = row.saturating_sub(1).min(last);
+    }
+
+    /// Apply a motion. Returns false if `action` is not a motion.
+    ///
+    /// `viewport` is how many rows are on screen; paging moves by it.
+    pub fn motion(&mut self, action: Action, count: Option<usize>, viewport: usize) -> bool {
+        let rows = |n: usize| isize::try_from(n).unwrap_or(isize::MAX);
+        let times = rows(count.map_or(1, |c| c.max(1)));
+        let half = rows((viewport / 2).max(1));
+        let page = rows(viewport.saturating_sub(1).max(1));
+        match action {
+            Action::Down => self.move_by(times),
+            Action::Up => self.move_by(-times),
+            Action::HalfPageDown => self.move_by(half),
+            Action::HalfPageUp => self.move_by(-half),
+            Action::PageDown => self.move_by(page),
+            Action::PageUp => self.move_by(-page),
+            Action::Top => match count {
+                Some(row) => self.goto(row),
+                None => self.top(),
+            },
+            Action::Bottom => match count {
+                Some(row) => self.goto(row),
+                None => self.bottom(),
+            },
+            _ => return false,
+        }
+        true
+    }
+
     /// Jump to the first row.
     pub fn top(&mut self) {
         self.cursor = 0;
@@ -206,6 +248,7 @@ fn matches(label: &str, filter: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::keys::Action;
 
     fn list() -> List {
         List::new(vec![
@@ -313,6 +356,59 @@ mod tests {
         let mut l = List::new(vec!["b".into(), "a".into()]);
         l.cycle_sort();
         assert_eq!(l.visible(), [1, 0]);
+    }
+
+    fn numbered(n: usize) -> List {
+        List::new((0..n).map(|i| format!("row{i:02}")).collect())
+    }
+
+    #[test]
+    fn move_by_clamps_at_both_ends() {
+        let mut l = numbered(10);
+        l.move_by(4);
+        assert_eq!(l.cursor(), 4);
+        l.move_by(100);
+        assert_eq!(l.cursor(), 9);
+        l.move_by(-3);
+        assert_eq!(l.cursor(), 6);
+        l.move_by(-100);
+        assert_eq!(l.cursor(), 0);
+    }
+
+    #[test]
+    fn goto_takes_a_one_based_row_and_clamps() {
+        let mut l = numbered(10);
+        l.goto(5);
+        assert_eq!(l.cursor(), 4);
+        l.goto(0);
+        assert_eq!(l.cursor(), 0);
+        l.goto(99);
+        assert_eq!(l.cursor(), 9);
+    }
+
+    #[test]
+    fn paging_uses_the_viewport_height() {
+        let mut l = numbered(100);
+        assert!(l.motion(Action::HalfPageDown, None, 20));
+        assert_eq!(l.cursor(), 10);
+        assert!(l.motion(Action::PageDown, None, 20));
+        assert_eq!(l.cursor(), 29);
+        assert!(l.motion(Action::HalfPageUp, None, 20));
+        assert_eq!(l.cursor(), 19);
+        assert!(l.motion(Action::PageUp, None, 20));
+        assert_eq!(l.cursor(), 0);
+    }
+
+    #[test]
+    fn motion_applies_counts_and_ignores_other_actions() {
+        let mut l = numbered(10);
+        assert!(l.motion(Action::Down, Some(3), 20));
+        assert_eq!(l.cursor(), 3);
+        assert!(l.motion(Action::Bottom, Some(2), 20));
+        assert_eq!(l.cursor(), 1);
+        assert!(l.motion(Action::Top, None, 20));
+        assert_eq!(l.cursor(), 0);
+        assert!(!l.motion(Action::Search, None, 20));
     }
 
     #[test]

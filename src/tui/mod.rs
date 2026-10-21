@@ -15,6 +15,7 @@ use ratatui::crossterm::event::{self, Event};
 use crate::error::Result;
 use crate::git::{self, Remote};
 use app::{App, Flow, Selection};
+use keys::KeyParser;
 use select::{Row, Select, SelectFlow};
 use theme::{Theme, ThemeName};
 
@@ -35,21 +36,28 @@ pub fn pick(
     result
 }
 
+/// Rows of list on screen: the terminal height minus the border and status line.
+fn list_rows(terminal: &ratatui::DefaultTerminal) -> Result<usize> {
+    Ok(usize::from(terminal.size()?.height.saturating_sub(3)).max(1))
+}
+
 fn run(
     terminal: &mut ratatui::DefaultTerminal,
     app: &mut App,
     theme: &Theme,
 ) -> Result<Option<Selection>> {
     let mut load = |remote: &Remote| git::remote_refs(&remote.url);
+    let mut parser = KeyParser::default();
     loop {
-        terminal.draw(|frame| ui::draw(frame, app, theme))?;
+        app.set_viewport(list_rows(terminal)?);
+        terminal.draw(|frame| ui::draw(frame, app, theme, &parser.pending()))?;
         let Event::Key(key) = event::read()? else {
             continue;
         };
-        let Some(action) = keys::map(key, app.typing()) else {
+        let Some(command) = parser.feed(key, app.typing()) else {
             continue;
         };
-        match app.update(action, &mut load) {
+        match app.update_with(command, &mut load) {
             Flow::Continue => {}
             Flow::Quit => return Ok(None),
             Flow::Done(selection) => return Ok(Some(selection)),
@@ -76,15 +84,17 @@ fn run_select(
     state: &mut Select,
     theme: &Theme,
 ) -> Result<Option<Vec<usize>>> {
+    let mut parser = KeyParser::default();
     loop {
-        terminal.draw(|frame| ui::draw_select(frame, state, theme))?;
+        state.set_viewport(list_rows(terminal)?);
+        terminal.draw(|frame| ui::draw_select(frame, state, theme, &parser.pending()))?;
         let Event::Key(key) = event::read()? else {
             continue;
         };
-        let Some(action) = keys::map(key, state.typing()) else {
+        let Some(command) = parser.feed(key, state.typing()) else {
             continue;
         };
-        match state.update(action) {
+        match state.update_with(command) {
             SelectFlow::Continue => {}
             SelectFlow::Quit => return Ok(None),
             SelectFlow::Done(chosen) => return Ok(Some(chosen)),

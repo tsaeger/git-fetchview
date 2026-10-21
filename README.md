@@ -31,7 +31,10 @@ A password embedded in a URL is left out of the printed commands.
 | key                     | action                                      |
 |-------------------------|---------------------------------------------|
 | `j` `k` / `↓` `↑`       | move                                        |
-| `g` `G`                 | top / bottom                                |
+| `gg` `G`                | top / bottom                                |
+| `5j` `5k` `5G` `5gg`    | counts: move 5 rows, or go to row 5         |
+| `Ctrl-d` `Ctrl-u`       | half a page down / up                       |
+| `Ctrl-f` `Ctrl-b`       | a page down / up (also `PageDown` `PageUp`) |
 | `l` / `→` / `Enter`     | drop in: select and go to the next level    |
 | `h` / `←` / `Esc`       | drop out (does nothing at the top level)    |
 | `/`                     | search (substring, case-insensitive)        |
@@ -39,7 +42,7 @@ A password embedded in a URL is left out of the printed commands.
 | `s`                     | cycle the sort: default, label, URL         |
 | `q`                     | quit, from anywhere                         |
 
-While typing a search, `Enter` confirms it and `Esc` abandons it. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. The cursor stays on the same row.
+Keys typed but not finished (`5`, `g`) show at the left of the status line, and `Esc` drops them. While typing a search, `Enter` confirms it and `Esc` abandons it. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. The cursor stays on the same row.
 
 ## Collecting remotes
 

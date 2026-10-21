@@ -5,7 +5,7 @@
 
 use crate::error::{Error, Result};
 use crate::git::{Remote, RemoteRef};
-use crate::tui::keys::Action;
+use crate::tui::keys::{Action, Command};
 use crate::tui::list::{List, SortKeys};
 
 /// Which list is showing.
@@ -61,6 +61,7 @@ pub struct App {
     typing: bool,
     error: Option<String>,
     notice: Option<String>,
+    viewport: usize,
     chosen: Option<usize>,
 }
 
@@ -87,6 +88,7 @@ impl App {
             typing: false,
             error: None,
             notice: None,
+            viewport: 10,
             chosen: None,
         }
     }
@@ -144,8 +146,19 @@ impl App {
         }
     }
 
+    /// Tell the picker how many rows fit on screen, for paging.
+    pub fn set_viewport(&mut self, rows: usize) {
+        self.viewport = rows.max(1);
+    }
+
     /// Apply one action.
     pub fn update(&mut self, action: Action, load: &mut Loader<'_>) -> Flow {
+        self.update_with(Command::from(action), load)
+    }
+
+    /// Apply one action with the count typed before it.
+    pub fn update_with(&mut self, command: Command, load: &mut Loader<'_>) -> Flow {
+        let Command { action, count } = command;
         self.error = None;
         self.notice = None;
         if action == Action::Quit {
@@ -155,11 +168,11 @@ impl App {
             self.update_typing(action);
             return Flow::Continue;
         }
+        let viewport = self.viewport;
+        if self.list_mut().motion(action, count, viewport) {
+            return Flow::Continue;
+        }
         match action {
-            Action::Down => self.list_mut().down(),
-            Action::Up => self.list_mut().up(),
-            Action::Top => self.list_mut().top(),
-            Action::Bottom => self.list_mut().bottom(),
             Action::Search => self.typing = true,
             Action::Clear => self.list_mut().clear(),
             Action::Sort => self.list_mut().cycle_sort(),
@@ -169,7 +182,15 @@ impl App {
             | Action::Char(_)
             | Action::Backspace
             | Action::Toggle
-            | Action::ToggleAll => {}
+            | Action::ToggleAll
+            | Action::Down
+            | Action::Up
+            | Action::Top
+            | Action::Bottom
+            | Action::HalfPageDown
+            | Action::HalfPageUp
+            | Action::PageDown
+            | Action::PageUp => {}
         }
         Flow::Continue
     }
@@ -238,6 +259,7 @@ impl App {
 #[allow(clippy::unnecessary_wraps)] // stub loaders must match `Loader`'s signature
 mod tests {
     use super::*;
+    use crate::tui::keys::Command;
 
     fn app() -> App {
         App::new(vec![
@@ -272,6 +294,44 @@ mod tests {
             a.list().visible_labels(),
             ["origin  u", "netdev/net  v  [merge,maintainers]"]
         );
+    }
+
+    #[test]
+    fn counted_moves_and_goto_work_in_the_picker() {
+        let mut a = App::new(
+            (0..10)
+                .map(|i| Remote {
+                    name: format!("r{i}"),
+                    url: format!("u{i}"),
+                    tags: Vec::new(),
+                })
+                .collect(),
+        );
+        a.update_with(
+            Command {
+                action: Action::Down,
+                count: Some(4),
+            },
+            &mut refs,
+        );
+        assert_eq!(a.list().cursor(), 4);
+        a.update_with(
+            Command {
+                action: Action::Bottom,
+                count: Some(2),
+            },
+            &mut refs,
+        );
+        assert_eq!(a.list().cursor(), 1);
+        a.set_viewport(6);
+        a.update_with(
+            Command {
+                action: Action::PageDown,
+                count: None,
+            },
+            &mut refs,
+        );
+        assert_eq!(a.list().cursor(), 6);
     }
 
     #[test]

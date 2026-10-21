@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::tui::keys::Action;
+use crate::tui::keys::{Action, Command};
 use crate::tui::list::{List, SortKeys};
 
 /// One selectable row.
@@ -39,6 +39,7 @@ pub struct Select {
     have: Vec<bool>,
     checked: BTreeSet<usize>,
     typing: bool,
+    viewport: usize,
 }
 
 impl Select {
@@ -61,6 +62,7 @@ impl Select {
             have,
             checked: BTreeSet::new(),
             typing: false,
+            viewport: 10,
         }
     }
 
@@ -100,8 +102,19 @@ impl Select {
         self.have.iter().filter(|h| !**h).count()
     }
 
+    /// Tell the list how many rows fit on screen, for paging.
+    pub fn set_viewport(&mut self, rows: usize) {
+        self.viewport = rows.max(1);
+    }
+
     /// Apply one action.
     pub fn update(&mut self, action: Action) -> SelectFlow {
+        self.update_with(Command::from(action))
+    }
+
+    /// Apply one action with the count typed before it.
+    pub fn update_with(&mut self, command: Command) -> SelectFlow {
+        let Command { action, count } = command;
         if action == Action::Quit {
             return SelectFlow::Quit;
         }
@@ -109,11 +122,10 @@ impl Select {
             self.update_typing(action);
             return SelectFlow::Continue;
         }
+        if self.list.motion(action, count, self.viewport) {
+            return SelectFlow::Continue;
+        }
         match action {
-            Action::Down => self.list.down(),
-            Action::Up => self.list.up(),
-            Action::Top => self.list.top(),
-            Action::Bottom => self.list.bottom(),
             Action::Search => self.typing = true,
             Action::Clear => self.list.clear(),
             Action::Sort => self.list.cycle_sort(),
@@ -124,7 +136,18 @@ impl Select {
             }
             Action::ToggleAll => self.toggle_all(),
             Action::Enter => return SelectFlow::Done(self.checked.iter().copied().collect()),
-            Action::Back | Action::Quit | Action::Char(_) | Action::Backspace => {}
+            Action::Back
+            | Action::Quit
+            | Action::Char(_)
+            | Action::Backspace
+            | Action::Down
+            | Action::Up
+            | Action::Top
+            | Action::Bottom
+            | Action::HalfPageDown
+            | Action::HalfPageUp
+            | Action::PageDown
+            | Action::PageUp => {}
         }
         SelectFlow::Continue
     }
@@ -172,6 +195,7 @@ impl Select {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::keys::Command;
 
     fn rows() -> Vec<Row> {
         vec![
@@ -270,6 +294,27 @@ mod tests {
         s.update(Action::Back);
         assert!(!s.typing());
         assert_eq!(s.list().filter(), "");
+    }
+
+    #[test]
+    fn counts_and_paging_move_the_cursor() {
+        let mut s = Select::new(rows());
+        s.set_viewport(2);
+        s.update_with(Command {
+            action: Action::Bottom,
+            count: None,
+        });
+        assert_eq!(s.list().cursor(), 2);
+        s.update_with(Command {
+            action: Action::Top,
+            count: Some(2),
+        });
+        assert_eq!(s.list().cursor(), 1);
+        s.update_with(Command {
+            action: Action::PageUp,
+            count: None,
+        });
+        assert_eq!(s.list().cursor(), 0);
     }
 
     #[test]

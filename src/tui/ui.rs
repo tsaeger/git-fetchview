@@ -53,6 +53,20 @@ fn sort_note(order: SortOrder) -> Option<String> {
     (order != SortOrder::Default).then(|| format!("sort: {}  ", order.name()))
 }
 
+/// `5g  ` for keys typed but not finished, or nothing.
+fn pending_note(pending: &str) -> Option<String> {
+    (!pending.is_empty()).then(|| format!("{pending}  "))
+}
+
+fn pending_span<'a>(pending: &str, theme: &Theme) -> Option<Span<'a>> {
+    pending_note(pending).map(|note| {
+        Span::styled(
+            note,
+            Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+        )
+    })
+}
+
 fn sort_span<'a>(order: SortOrder, theme: &Theme) -> Option<Span<'a>> {
     sort_note(order).map(|note| Span::styled(note, Style::new().fg(theme.accent)))
 }
@@ -66,7 +80,7 @@ fn typing_line<'a>(filter: &str, theme: &Theme) -> Line<'a> {
 }
 
 /// Draw the picker.
-pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme) {
+pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
     frame.render_widget(Block::new().style(base(theme)), frame.area());
     let [body, status] =
         Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
@@ -93,9 +107,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme) {
             Style::new().fg(theme.accent),
         ))
     } else {
-        let mut spans: Vec<Span<'_>> = sort_span(app.list().sort_order(), theme)
-            .into_iter()
-            .collect();
+        let mut spans: Vec<Span<'_>> = pending_span(pending, theme).into_iter().collect();
+        spans.extend(sort_span(app.list().sort_order(), theme));
         if app.list().filter().is_empty() {
             spans.push(Span::styled(HINTS, Style::new().fg(theme.dim)));
         } else {
@@ -111,7 +124,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme) {
 }
 
 /// Draw the multi-select.
-pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme) {
+pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pending: &str) {
     frame.render_widget(Block::new().style(base(theme)), frame.area());
     let [body, status] =
         Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
@@ -149,7 +162,8 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme) {
             select.checked_count(),
             select.selectable_count()
         );
-        let mut spans = vec![Span::styled(counts, Style::new().fg(theme.accent))];
+        let mut spans: Vec<Span<'_>> = pending_span(pending, theme).into_iter().collect();
+        spans.push(Span::styled(counts, Style::new().fg(theme.accent)));
         spans.extend(sort_span(select.list().sort_order(), theme));
         spans.push(Span::styled(SELECT_HINTS, Style::new().fg(theme.dim)));
         Line::from(spans)
@@ -160,6 +174,12 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pending_input_shows_in_the_status_line() {
+        assert_eq!(pending_note(""), None);
+        assert_eq!(pending_note("5g"), Some("5g  ".to_owned()));
+    }
 
     #[test]
     fn the_status_line_names_a_non_default_sort() {
