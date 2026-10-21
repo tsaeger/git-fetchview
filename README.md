@@ -43,7 +43,7 @@ A password embedded in a URL is left out of the printed commands.
 | `r`                     | reverse the current order                   |
 | `q`                     | quit, from anywhere                         |
 
-Keys typed but not finished (`5`, `g`) show at the left of the status line, and `Esc` drops them. While typing a search, `Enter` confirms it and `Esc` abandons it. In sort mode the status line shows the columns (`default`, `label`, `url`, `tags`; refs have `default` and `label`) with the active one in brackets, and the list re-sorts as you move. Labels sort naturally, so `v6.9` comes before `v6.10`, and `r` after `s` puts the newest tags first. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. The cursor stays on the same row.
+Keys typed but not finished (`5`, `g`) show at the left of the status line, and `Esc` drops them. While typing a search, `Enter` confirms it and `Esc` abandons it. In sort mode the status line shows the columns (`default`, `label`, `url`, `tags`; refs have `default` and `label`) with the active one in brackets, and the list re-sorts as you move. Labels sort naturally, so `v6.9` comes before `v6.10`, and `r` after `s` puts the newest tags first. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. Moving the sort column keeps the cursor on the same row, and `r` puts it at the top of the list.
 
 ## Collecting remotes
 

@@ -137,11 +137,10 @@ impl List {
         self.follow(selected);
     }
 
-    /// Flip the order inside each group. The cursor stays on the same row.
+    /// Flip the order inside each group and go to the top of the list.
     pub fn toggle_reverse(&mut self) {
-        let selected = self.selected();
         self.reversed = !self.reversed;
-        self.follow(selected);
+        self.cursor = 0;
     }
 
     /// The current filter text.
@@ -577,13 +576,16 @@ mod tests {
     }
 
     #[test]
-    fn the_cursor_stays_on_the_same_row_after_a_reverse() {
+    fn reversing_puts_the_cursor_at_the_top() {
         let mut l = keyed();
         l.down();
-        assert_eq!(l.selected(), Some(1));
+        l.down();
+        assert_eq!(l.cursor(), 2);
         l.toggle_reverse();
-        assert_eq!(l.selected(), Some(1));
-        assert_eq!(l.cursor(), 3);
+        assert_eq!(l.cursor(), 0);
+        l.bottom();
+        l.toggle_reverse();
+        assert_eq!(l.cursor(), 0);
     }
 
     #[test]

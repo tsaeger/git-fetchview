@@ -387,12 +387,13 @@ mod tests {
     }
 
     #[test]
-    fn checks_survive_a_reverse() {
+    fn checks_survive_a_reverse_and_the_cursor_goes_to_the_top() {
         let mut s = Select::new(rows());
         s.update(Action::Toggle);
         s.update(Action::Reverse);
         assert!(s.is_checked(0));
-        assert_eq!(s.list().selected(), Some(0));
+        assert_eq!(s.list().cursor(), 0);
+        assert_eq!(s.list().selected(), Some(2));
     }
 
     #[test]
