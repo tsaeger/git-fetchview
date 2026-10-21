@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Tom Saeger <tom.saeger@gmail.com>
+
+[package]
+name = "git-fetchview-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+git-fetchview = { path = ".." }
+
+[[bin]]
+name = "parse_ls_remote"
+path = "fuzz_targets/parse_ls_remote.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_remotes"
+path = "fuzz_targets/parse_remotes.rs"
+test = false
+doc = false
+
+[workspace]
