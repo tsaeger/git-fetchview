@@ -6,6 +6,8 @@
 Pick a remote, pick a ref, fetch it, and browse it in [tig](https://jonas.github.io/tig/) —
 without checking anything out or touching your branches.
 
+![Collecting kernel trees from MAINTAINERS, then fetching net-next into tig](docs/demo/demo.gif)
+
 ```
 git fetchview        # or the short form: git fv
 ```

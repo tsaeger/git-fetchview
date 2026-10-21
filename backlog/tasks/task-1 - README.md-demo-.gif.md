@@ -1,10 +1,10 @@
 ---
 id: TASK-1
 title: README.md demo .gif
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-21T17:40:00Z'
-updated_date: '2026-10-21T17:52:00Z'
+updated_date: '2026-10-21T21:11:00Z'
 labels:
   - demo
   - docs
@@ -23,9 +23,9 @@ Linux kernel repo at /Users/tsaeger/dev/linux can be used to show compelling wor
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 docs/demo/setup.sh and docs/demo/demo.tape reproduce the demo from a clean checkout
-- [ ] #2 The GIF is tracked with Git LFS and embedded near the top of README.md
-- [ ] #3 The demo shows the final UI, so it is recorded after the UI redo
+- [x] #1 docs/demo/setup.sh and docs/demo/demo.tape reproduce the demo from a clean checkout
+- [x] #2 The GIF is tracked with Git LFS and embedded near the top of README.md
+- [x] #3 The demo shows the final UI, so it is recorded after the UI redo
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -39,3 +39,9 @@ Linux kernel repo at /Users/tsaeger/dev/linux can be used to show compelling wor
 <!-- SECTION:NOTES:BEGIN -->
 Scripts and LFS config are committed. A recording made before the UI redo proved the pipeline: add maintainers (306 trees found), filter /netdev, fetch net-next, natural newest-first tag sort, tig. In vhs, tig must be waited for with Wait+Screen; Enter did not open a commit in tig under vhs. The GIF is about 2 MB.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Re-recorded after the table UI landed. The look now lives in docs/demo/style.tape so the TASK-5 showcases share it. demo.gif is tracked with LFS and embedded at the top of README.md.
+<!-- SECTION:FINAL_SUMMARY:END -->
