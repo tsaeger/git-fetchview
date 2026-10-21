@@ -7,6 +7,7 @@
 //! so the cut-and-paste trail can never drift from what the tool does.
 
 use std::fmt;
+use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 
 use crate::error::{Error, Result};
@@ -84,6 +85,59 @@ impl Cmd {
     #[must_use]
     pub fn tig_fetch_head() -> Self {
         Self::new("tig", ["FETCH_HEAD"])
+    }
+
+    /// `git log --merges --format=%s [-n N] <range> --`
+    #[must_use]
+    pub fn log_merges(range: &str, max: Option<usize>) -> Self {
+        let mut args = vec![
+            "log".to_owned(),
+            "--merges".to_owned(),
+            "--format=%s".to_owned(),
+        ];
+        if let Some(n) = max {
+            args.push("-n".to_owned());
+            args.push(n.to_string());
+        }
+        args.push(range.to_owned());
+        args.push("--".to_owned());
+        Self::new("git", args)
+    }
+
+    /// Run and call `f` on each line of stdout as it arrives, so a large
+    /// history is not held in memory. Invalid UTF-8 is replaced.
+    ///
+    /// # Errors
+    /// [`Error::Spawn`] or [`Error::Failed`].
+    pub fn for_each_line(&self, mut f: impl FnMut(&str)) -> Result<()> {
+        let spawn_err = |source| Error::Spawn {
+            command: self.to_string(),
+            source,
+        };
+        let mut child = Command::new(self.program)
+            .args(&self.args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(spawn_err)?;
+        let Some(stdout) = child.stdout.take() else {
+            return Err(spawn_err(std::io::Error::other("no stdout pipe")));
+        };
+        for chunk in BufReader::new(stdout).split(b'\n') {
+            let bytes = chunk.map_err(spawn_err)?;
+            f(&String::from_utf8_lossy(&bytes));
+        }
+        let out = child.wait_with_output().map_err(spawn_err)?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(Error::Failed {
+                command: self.to_string(),
+                status: out.status,
+                stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            })
+        }
     }
 
     /// Run, capture stdout, and fail on a non-zero exit.
@@ -296,6 +350,18 @@ mod tests {
         assert_eq!(
             Cmd::config_paths("fetchview.remotes").to_string(),
             "git config --type=path --show-origin --get-all fetchview.remotes"
+        );
+    }
+
+    #[test]
+    fn log_merges_display() {
+        assert_eq!(
+            Cmd::log_merges("v6.1..v6.2", Some(5)).to_string(),
+            "git log --merges --format=%s -n 5 v6.1..v6.2 --"
+        );
+        assert_eq!(
+            Cmd::log_merges("HEAD", None).to_string(),
+            "git log --merges --format=%s HEAD --"
         );
     }
 

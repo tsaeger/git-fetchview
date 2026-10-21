@@ -6,3 +6,4 @@
 pub mod entry;
 pub mod file;
 pub mod registry;
+pub mod source;
