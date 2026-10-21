@@ -36,7 +36,7 @@ impl Style {
         }
         match Path::new(name).extension().and_then(|e| e.to_str()) {
             Some("rs") => Some(Self::Slashes),
-            Some("toml") => Some(Self::Hash),
+            Some("toml" | "nix") => Some(Self::Hash),
             Some("md") => Some(Self::Html),
             _ if name == ".gitignore" => Some(Self::Hash),
             _ => None,
@@ -141,6 +141,12 @@ mod tests {
         assert!(matches!(Style::of("a/Cargo.toml"), Some(Style::Hash)));
         assert!(matches!(Style::of(".gitignore"), Some(Style::Hash)));
         assert!(matches!(Style::of("README.md"), Some(Style::Html)));
+        assert!(matches!(Style::of("flake.nix"), Some(Style::Hash)));
+        assert!(matches!(
+            Style::of("rust-toolchain.toml"),
+            Some(Style::Hash)
+        ));
+        assert!(Style::of("flake.lock").is_none());
         assert!(Style::of("LICENSE").is_none());
         // backlog.md task files start with YAML front matter, so no header.
         assert!(Style::of("backlog/tasks/task-1 - Something.md").is_none());
