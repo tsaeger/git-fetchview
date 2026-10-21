@@ -8,7 +8,7 @@ edition = "2024"
 description = "Pick a remote and ref, fetch it, and open it in tig, printing the plain git commands as you go"
 license = "MIT"
 authors = ["Tom Saeger <tom.saeger@gmail.com>"]
-rust-version = "1.85"
+rust-version = "1.88.0"
 
 [lints]
 workspace = true
