@@ -1,4 +1,6 @@
-# The README demo. Run docs/demo/setup.sh first, then, from the repo root:
+# The README demo. Run docs/demo/setup.sh before EVERY recording (it resets the
+# scratch clone; otherwise trees collected by the last run show as (have)).
+# Then, from the repo root:
 #   nix shell nixpkgs#ttyd --command vhs docs/demo/demo.tape
 # The GIF is tracked with Git LFS (see .gitattributes). It needs network access
 # to git.kernel.org for the fetch.
@@ -25,13 +27,13 @@ Enter
 Sleep 800ms
 Type "git fetchview add maintainers"
 Enter
-Sleep 2500ms
+Sleep 3s
 Type "/netdev"
-Sleep 600ms
+Sleep 800ms
 Enter
-Sleep 1200ms
+Sleep 2500ms
 Type "a"
-Sleep 1500ms
+Sleep 3s
 Enter
 Sleep 2500ms
 
