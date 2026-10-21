@@ -38,7 +38,7 @@ impl Style {
             Some("rs") => Some(Self::Slashes),
             Some("toml" | "nix") => Some(Self::Hash),
             Some("md") => Some(Self::Html),
-            _ if name == ".gitignore" => Some(Self::Hash),
+            _ if name == ".gitignore" || name == ".gitattributes" => Some(Self::Hash),
             _ => None,
         }
     }
@@ -141,6 +141,7 @@ mod tests {
         assert!(matches!(Style::of("a/Cargo.toml"), Some(Style::Hash)));
         assert!(matches!(Style::of(".gitignore"), Some(Style::Hash)));
         assert!(matches!(Style::of("README.md"), Some(Style::Html)));
+        assert!(matches!(Style::of(".gitattributes"), Some(Style::Hash)));
         assert!(matches!(Style::of("flake.nix"), Some(Style::Hash)));
         assert!(matches!(
             Style::of("rust-toolchain.toml"),

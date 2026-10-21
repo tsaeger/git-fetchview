@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Tom Saeger <tom.saeger@gmail.com>
+
+docs/demo/*.gif filter=lfs diff=lfs merge=lfs -text
