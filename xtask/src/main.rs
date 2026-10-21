@@ -6,6 +6,7 @@
 //! CI runs exactly these tasks, so anything that passes locally passes there.
 
 mod headers;
+mod install;
 
 use std::process::{Command, ExitCode};
 
@@ -71,6 +72,16 @@ enum Task {
     },
     /// Generate man page and shell completions under target/.
     Dist,
+    /// Build and install the binaries, man pages and shell completions.
+    Install {
+        /// Install under this prefix (`<prefix>/bin`, `<prefix>/share/...`)
+        /// instead of the per-user directories.
+        #[arg(long)]
+        prefix: Option<std::path::PathBuf>,
+        /// Show what would be done and change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Everything required before cutting a release.
     PrepRelease,
 }
@@ -141,6 +152,7 @@ fn run(task: Task) -> Result<()> {
         Task::Headers { fix } => headers::run(fix),
         Task::Changelog { check, tag } => changelog(check, tag.as_deref()),
         Task::Dist => dist(),
+        Task::Install { prefix, dry_run } => install::run(prefix.as_deref(), dry_run),
         Task::PrepRelease => {
             run(Task::Ci)?;
             run(Task::Dist)?;
