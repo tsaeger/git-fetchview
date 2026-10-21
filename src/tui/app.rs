@@ -6,7 +6,7 @@
 use crate::error::{Error, Result};
 use crate::git::{Remote, RemoteRef};
 use crate::tui::keys::Action;
-use crate::tui::list::List;
+use crate::tui::list::{List, SortKeys};
 
 /// Which list is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,9 +69,18 @@ impl App {
     #[must_use]
     pub fn new(remotes: Vec<Remote>) -> Self {
         let labels = remotes.iter().map(remote_label).collect();
+        let keys = remotes
+            .iter()
+            .map(|r| SortKeys {
+                name: r.name.clone(),
+                url: r.url.clone(),
+                // Real remotes stay above collected ones.
+                group: u8::from(!r.tags.is_empty()),
+            })
+            .collect();
         Self {
             remotes,
-            remote_list: List::new(labels),
+            remote_list: List::with_keys(labels, keys),
             refs: Vec::new(),
             ref_list: List::default(),
             level: Level::Remotes,
@@ -153,6 +162,7 @@ impl App {
             Action::Bottom => self.list_mut().bottom(),
             Action::Search => self.typing = true,
             Action::Clear => self.list_mut().clear(),
+            Action::Sort => self.list_mut().cycle_sort(),
             Action::Back => self.back(),
             Action::Enter => return self.enter(load),
             Action::Quit
@@ -262,6 +272,32 @@ mod tests {
             a.list().visible_labels(),
             ["origin  u", "netdev/net  v  [merge,maintainers]"]
         );
+    }
+
+    #[test]
+    fn s_cycles_the_sort_and_keeps_real_remotes_on_top() {
+        let mut a = App::new(vec![
+            Remote {
+                name: "origin".into(),
+                url: "https://z/o".into(),
+                tags: Vec::new(),
+            },
+            Remote {
+                name: "zeta".into(),
+                url: "https://a/z".into(),
+                tags: vec!["merge".into()],
+            },
+            Remote {
+                name: "alpha".into(),
+                url: "https://b/a".into(),
+                tags: vec!["merge".into()],
+            },
+        ]);
+        a.update(Action::Sort, &mut refs);
+        assert_eq!(a.list().visible(), [0, 2, 1]);
+        a.update(Action::Sort, &mut refs);
+        assert_eq!(a.list().visible(), [0, 1, 2]);
+        assert_eq!(a.list().sort_order().name(), "url");
     }
 
     #[test]

@@ -10,11 +10,12 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List as ListWidget, ListItem, ListState, Paragraph};
 
 use crate::tui::app::{App, Level};
+use crate::tui::list::SortOrder;
 use crate::tui::select::Select;
 use crate::tui::theme::Theme;
 
-const HINTS: &str = "j/k move  l/enter open  h/esc back  / search  c clear  q quit";
-const SELECT_HINTS: &str = "space toggle  a all  enter write  / search  c clear  q quit";
+const HINTS: &str = "j/k move  l/enter open  h/esc back  / search  c clear  s sort  q quit";
+const SELECT_HINTS: &str = "space toggle  a all  enter write  / search  c clear  s sort  q quit";
 
 fn base(theme: &Theme) -> Style {
     Style::new().fg(theme.fg).bg(theme.bg)
@@ -47,16 +48,21 @@ fn render_list(
     frame.render_stateful_widget(list, area, &mut state);
 }
 
+/// `sort: label  ` for the status line, or nothing in the default order.
+fn sort_note(order: SortOrder) -> Option<String> {
+    (order != SortOrder::Default).then(|| format!("sort: {}  ", order.name()))
+}
+
+fn sort_span<'a>(order: SortOrder, theme: &Theme) -> Option<Span<'a>> {
+    sort_note(order).map(|note| Span::styled(note, Style::new().fg(theme.accent)))
+}
+
 fn typing_line<'a>(filter: &str, theme: &Theme) -> Line<'a> {
     Line::from(vec![
         Span::styled("/", Style::new().fg(theme.accent)),
         Span::raw(filter.to_owned()),
         Span::styled("█", Style::new().fg(theme.accent)),
     ])
-}
-
-fn hint_line<'a>(text: &str, theme: &Theme) -> Line<'a> {
-    Line::from(Span::styled(text.to_owned(), Style::new().fg(theme.dim)))
 }
 
 /// Draw the picker.
@@ -86,16 +92,20 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme) {
             notice.to_owned(),
             Style::new().fg(theme.accent),
         ))
-    } else if app.list().filter().is_empty() {
-        hint_line(HINTS, theme)
     } else {
-        Line::from(vec![
-            Span::styled(
+        let mut spans: Vec<Span<'_>> = sort_span(app.list().sort_order(), theme)
+            .into_iter()
+            .collect();
+        if app.list().filter().is_empty() {
+            spans.push(Span::styled(HINTS, Style::new().fg(theme.dim)));
+        } else {
+            spans.push(Span::styled(
                 format!("/{}", app.list().filter()),
                 Style::new().fg(theme.accent),
-            ),
-            Span::styled("  c clear", Style::new().fg(theme.dim)),
-        ])
+            ));
+            spans.push(Span::styled("  c clear", Style::new().fg(theme.dim)));
+        }
+        Line::from(spans)
     };
     frame.render_widget(Paragraph::new(line).style(base(theme)), status);
 }
@@ -139,10 +149,25 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme) {
             select.checked_count(),
             select.selectable_count()
         );
-        Line::from(vec![
-            Span::styled(counts, Style::new().fg(theme.accent)),
-            Span::styled(SELECT_HINTS, Style::new().fg(theme.dim)),
-        ])
+        let mut spans = vec![Span::styled(counts, Style::new().fg(theme.accent))];
+        spans.extend(sort_span(select.list().sort_order(), theme));
+        spans.push(Span::styled(SELECT_HINTS, Style::new().fg(theme.dim)));
+        Line::from(spans)
     };
     frame.render_widget(Paragraph::new(line).style(base(theme)), status);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_status_line_names_a_non_default_sort() {
+        assert_eq!(sort_note(SortOrder::Default), None);
+        assert_eq!(
+            sort_note(SortOrder::Label),
+            Some("sort: label  ".to_owned())
+        );
+        assert_eq!(sort_note(SortOrder::Url), Some("sort: url  ".to_owned()));
+    }
 }

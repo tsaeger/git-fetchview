@@ -30,7 +30,7 @@ equivalent plain commands as a cut-and-paste trail. Linux and macOS are the prim
 
 - `hjkl` and arrows both navigate. `Enter`/`l`/`→` drops in (and selects, advancing to the next level); `Esc`/`h`/`←` drops out.
 - `Esc` at the top level does **not** exit. `q` exits from any level.
-- `/` searches/filters (substring now; regex later, in `tui/list.rs::matches`). `c` clears it.
+- `/` searches/filters (substring now; regex later, in `tui/list.rs::matches`). `c` clears it. `s` cycles the sort order (default, label, URL) without moving a row out of its group.
 - While typing a search, characters are text (so `q` types a `q`); `Enter` confirms, `Esc` abandons.
 - The single keymap is `tui/keys.rs`; change keys there, not in the state machine.
 - Themes live in `tui/theme.rs` (kanagawa default). Add a variant there and it appears in flags and config errors automatically.

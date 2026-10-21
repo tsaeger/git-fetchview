@@ -84,6 +84,15 @@ fn target(args: &AddArgs) -> Result<(PathBuf, String, Scope)> {
     }
 }
 
+fn row(entry: &Entry, have: bool) -> Row {
+    Row {
+        label: row_label(entry),
+        name: entry.display_label(),
+        url: entry.url.clone(),
+        have,
+    }
+}
+
 fn row_label(entry: &Entry) -> String {
     let tags = entry.tags.iter().cloned().collect::<Vec<_>>().join(",");
     format!("{}  {}  [{tags}]", entry.display_label(), entry.url)
@@ -126,14 +135,8 @@ pub fn add(args: &AddArgs) -> Result<()> {
         let rows: Vec<Row> = plan
             .new
             .iter()
-            .map(|e| Row {
-                label: row_label(e),
-                have: false,
-            })
-            .chain(plan.present.iter().map(|e| Row {
-                label: row_label(e),
-                have: true,
-            }))
+            .map(|e| row(e, false))
+            .chain(plan.present.iter().map(|e| row(e, true)))
             .collect();
         match tui::select_many(rows, theme)? {
             None => return Ok(()),

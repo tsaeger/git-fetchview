@@ -6,13 +6,17 @@
 use std::collections::BTreeSet;
 
 use crate::tui::keys::Action;
-use crate::tui::list::List;
+use crate::tui::list::{List, SortKeys};
 
 /// One selectable row.
 #[derive(Debug, Clone)]
 pub struct Row {
     /// Text to show and filter on.
     pub label: String,
+    /// Name to sort by in label order.
+    pub name: String,
+    /// URL to sort by in URL order.
+    pub url: String,
     /// Already present: shown, but cannot be checked.
     pub have: bool,
 }
@@ -42,7 +46,16 @@ impl Select {
     #[must_use]
     pub fn new(rows: Vec<Row>) -> Self {
         let have = rows.iter().map(|r| r.have).collect();
-        let list = List::new(rows.into_iter().map(|r| r.label).collect());
+        let keys = rows
+            .iter()
+            .map(|r| SortKeys {
+                name: r.name.clone(),
+                url: r.url.clone(),
+                // Rows already present stay below the new ones.
+                group: u8::from(r.have),
+            })
+            .collect();
+        let list = List::with_keys(rows.into_iter().map(|r| r.label).collect(), keys);
         Self {
             list,
             have,
@@ -103,6 +116,7 @@ impl Select {
             Action::Bottom => self.list.bottom(),
             Action::Search => self.typing = true,
             Action::Clear => self.list.clear(),
+            Action::Sort => self.list.cycle_sort(),
             Action::Toggle => {
                 if let Some(i) = self.list.selected() {
                     self.toggle(i);
@@ -163,14 +177,20 @@ mod tests {
         vec![
             Row {
                 label: "net  https://h/net".into(),
+                name: "net".into(),
+                url: "https://h/net".into(),
                 have: false,
             },
             Row {
                 label: "mm  https://h/mm".into(),
+                name: "mm".into(),
+                url: "https://h/mm".into(),
                 have: true,
             },
             Row {
                 label: "usb  https://h/usb".into(),
+                name: "usb".into(),
+                url: "https://h/usb".into(),
                 have: false,
             },
         ]
@@ -250,6 +270,27 @@ mod tests {
         s.update(Action::Back);
         assert!(!s.typing());
         assert_eq!(s.list().filter(), "");
+    }
+
+    #[test]
+    fn s_sorts_new_rows_and_keeps_present_rows_last() {
+        let mut s = Select::new(rows());
+        s.update(Action::Sort);
+        assert_eq!(s.list().visible(), [0, 2, 1]);
+        s.update(Action::Sort);
+        assert_eq!(s.list().visible(), [0, 2, 1]);
+    }
+
+    #[test]
+    fn checks_survive_a_sort() {
+        let mut s = Select::new(rows());
+        s.update(Action::Down);
+        s.update(Action::Down);
+        s.update(Action::Toggle);
+        s.update(Action::Sort);
+        s.update(Action::Sort);
+        assert!(s.is_checked(2));
+        assert_eq!(s.list().selected(), Some(2));
     }
 
     #[test]

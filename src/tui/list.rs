@@ -3,22 +3,100 @@
 
 //! A filterable list with a cursor.
 
+/// How the rows are ordered. `s` cycles through them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SortOrder {
+    /// The order the rows were given in.
+    #[default]
+    Default,
+    /// By name, case-insensitive, within each group.
+    Label,
+    /// By URL, case-insensitive, within each group.
+    Url,
+}
+
+impl SortOrder {
+    /// The next order in the cycle.
+    #[must_use]
+    pub fn next(self) -> Self {
+        match self {
+            Self::Default => Self::Label,
+            Self::Label => Self::Url,
+            Self::Url => Self::Default,
+        }
+    }
+
+    /// A short name for the status line.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Label => "label",
+            Self::Url => "url",
+        }
+    }
+}
+
+/// What a row is sorted by. Sorting never moves a row out of its group.
+#[derive(Debug, Clone, Default)]
+pub struct SortKeys {
+    /// Name to sort by in label order.
+    pub name: String,
+    /// URL to sort by in URL order.
+    pub url: String,
+    /// Rows sort within their group; lower groups come first.
+    pub group: u8,
+}
+
 /// Rows of display text plus a search filter and a cursor into the visible rows.
 #[derive(Debug, Clone, Default)]
 pub struct List {
     labels: Vec<String>,
+    keys: Vec<SortKeys>,
+    sort: SortOrder,
     filter: String,
     cursor: usize,
 }
 
 impl List {
-    /// Build a list from display labels.
+    /// Build a list from display labels. Rows sort by their text.
     #[must_use]
     pub fn new(labels: Vec<String>) -> Self {
+        let keys = labels
+            .iter()
+            .map(|label| SortKeys {
+                name: label.clone(),
+                url: label.clone(),
+                group: 0,
+            })
+            .collect();
+        Self::with_keys(labels, keys)
+    }
+
+    /// Build a list whose rows sort by the given keys.
+    #[must_use]
+    pub fn with_keys(labels: Vec<String>, keys: Vec<SortKeys>) -> Self {
+        debug_assert_eq!(labels.len(), keys.len());
         Self {
             labels,
+            keys,
             ..Self::default()
         }
+    }
+
+    /// The current sort order.
+    #[must_use]
+    pub fn sort_order(&self) -> SortOrder {
+        self.sort
+    }
+
+    /// Move to the next sort order. The cursor stays on the same row.
+    pub fn cycle_sort(&mut self) {
+        let selected = self.selected();
+        self.sort = self.sort.next();
+        self.cursor = selected
+            .and_then(|row| self.visible().iter().position(|&i| i == row))
+            .unwrap_or(0);
     }
 
     /// The current filter text.
@@ -27,12 +105,27 @@ impl List {
         &self.filter
     }
 
-    /// Indices (into the original labels) of rows matching the filter.
+    /// Indices (into the original labels) of rows matching the filter, in
+    /// the current sort order.
     #[must_use]
     pub fn visible(&self) -> Vec<usize> {
-        (0..self.labels.len())
+        let mut rows: Vec<usize> = (0..self.labels.len())
             .filter(|&i| matches(&self.labels[i], &self.filter))
-            .collect()
+            .collect();
+        match self.sort {
+            SortOrder::Default => {}
+            SortOrder::Label => rows
+                .sort_by_cached_key(|&i| (self.keys[i].group, self.keys[i].name.to_lowercase(), i)),
+            SortOrder::Url => rows.sort_by_cached_key(|&i| {
+                (
+                    self.keys[i].group,
+                    self.keys[i].url.to_lowercase(),
+                    self.keys[i].name.to_lowercase(),
+                    i,
+                )
+            }),
+        }
+        rows
     }
 
     /// Labels of the visible rows, in order.
@@ -146,6 +239,87 @@ mod tests {
         assert_eq!(l.cursor(), 0);
         l.clear();
         assert_eq!(l.visible().len(), 3);
+    }
+
+    fn keyed() -> List {
+        let key = |name: &str, url: &str, group: u8| SortKeys {
+            name: name.into(),
+            url: url.into(),
+            group,
+        };
+        List::with_keys(
+            vec![
+                "origin  https://z/o".into(),
+                "zeta  https://a/z".into(),
+                "Alpha  https://c/a".into(),
+                "mid  https://b/m".into(),
+            ],
+            vec![
+                key("origin", "https://z/o", 0),
+                key("zeta", "https://a/z", 1),
+                key("Alpha", "https://c/a", 1),
+                key("mid", "https://b/m", 1),
+            ],
+        )
+    }
+
+    #[test]
+    fn label_order_sorts_each_group_case_insensitively() {
+        let mut l = keyed();
+        l.cycle_sort();
+        assert_eq!(l.sort_order(), SortOrder::Label);
+        assert_eq!(l.visible(), [0, 2, 3, 1]);
+    }
+
+    #[test]
+    fn url_order_sorts_each_group_by_url() {
+        let mut l = keyed();
+        l.cycle_sort();
+        l.cycle_sort();
+        assert_eq!(l.sort_order(), SortOrder::Url);
+        assert_eq!(l.visible(), [0, 1, 3, 2]);
+    }
+
+    #[test]
+    fn a_third_press_restores_the_original_order() {
+        let mut l = keyed();
+        for _ in 0..3 {
+            l.cycle_sort();
+        }
+        assert_eq!(l.sort_order(), SortOrder::Default);
+        assert_eq!(l.visible(), [0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn the_cursor_stays_on_the_same_row_after_a_sort() {
+        let mut l = keyed();
+        l.down();
+        assert_eq!(l.selected(), Some(1));
+        l.cycle_sort();
+        assert_eq!(l.selected(), Some(1));
+        assert_eq!(l.cursor(), 3);
+    }
+
+    #[test]
+    fn sort_and_filter_compose() {
+        let mut l = keyed();
+        l.push('a');
+        l.cycle_sort();
+        assert_eq!(l.visible(), [2, 1]);
+    }
+
+    #[test]
+    fn a_plain_list_sorts_by_its_text() {
+        let mut l = List::new(vec!["b".into(), "a".into()]);
+        l.cycle_sort();
+        assert_eq!(l.visible(), [1, 0]);
+    }
+
+    #[test]
+    fn sort_orders_have_names() {
+        assert_eq!(SortOrder::Default.name(), "default");
+        assert_eq!(SortOrder::Label.name(), "label");
+        assert_eq!(SortOrder::Url.name(), "url");
     }
 
     #[test]

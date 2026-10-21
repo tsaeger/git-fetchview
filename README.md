@@ -36,9 +36,10 @@ A password embedded in a URL is left out of the printed commands.
 | `h` / `←` / `Esc`       | drop out (does nothing at the top level)    |
 | `/`                     | search (substring, case-insensitive)        |
 | `c`                     | clear the search                            |
+| `s`                     | cycle the sort: default, label, URL         |
 | `q`                     | quit, from anywhere                         |
 
-While typing a search, `Enter` confirms it and `Esc` abandons it.
+While typing a search, `Enter` confirms it and `Esc` abandons it. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. The cursor stays on the same row.
 
 ## Collecting remotes
 

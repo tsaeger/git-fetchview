@@ -12,6 +12,7 @@
 //! | `h` / `Left` / `Esc`    | drop out (never exits at top level) |
 //! | `/`                     | search / filter                     |
 //! | `c`                     | clear search / filter               |
+//! | `s`                     | cycle the sort order                |
 //! | `Space`                 | toggle a row (multi-select)         |
 //! | `a`                     | toggle all visible rows (multi-select) |
 //! | `q` / `Ctrl-c`          | quit, from any level                |
@@ -42,6 +43,8 @@ pub enum Action {
     Search,
     /// Clear the search / filter.
     Clear,
+    /// Cycle the sort order.
+    Sort,
     /// Toggle the row under the cursor (multi-select).
     Toggle,
     /// Toggle every visible row (multi-select).
@@ -76,6 +79,7 @@ pub fn map(key: KeyEvent, typing: bool) -> Option<Action> {
         (false, KeyCode::Char('h') | KeyCode::Left) => Some(Action::Back),
         (false, KeyCode::Char(' ')) => Some(Action::Toggle),
         (false, KeyCode::Char('a')) => Some(Action::ToggleAll),
+        (false, KeyCode::Char('s')) => Some(Action::Sort),
         (false, KeyCode::Char('/')) => Some(Action::Search),
         (false, KeyCode::Char('c')) => Some(Action::Clear),
         (false, KeyCode::Char('q')) => Some(Action::Quit),
@@ -115,6 +119,12 @@ mod tests {
         assert_eq!(map(key(KeyCode::Char('a')), false), Some(Action::ToggleAll));
         assert_eq!(map(key(KeyCode::Char(' ')), true), Some(Action::Char(' ')));
         assert_eq!(map(key(KeyCode::Char('a')), true), Some(Action::Char('a')));
+    }
+
+    #[test]
+    fn s_sorts_but_only_when_not_typing() {
+        assert_eq!(map(key(KeyCode::Char('s')), false), Some(Action::Sort));
+        assert_eq!(map(key(KeyCode::Char('s')), true), Some(Action::Char('s')));
     }
 
     #[test]
