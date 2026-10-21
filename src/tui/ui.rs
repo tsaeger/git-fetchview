@@ -7,7 +7,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, List as ListWidget, ListItem, ListState, Paragraph};
+use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState};
 
 use crate::tui::app::{App, Level};
 use crate::tui::list::{List, SortOrder};
@@ -22,12 +22,68 @@ fn base(theme: &Theme) -> Style {
     Style::new().fg(theme.fg).bg(theme.bg)
 }
 
-fn render_list(
+/// A column header and the sort order that picks it, if it can be sorted.
+type Header = (&'static str, Option<SortOrder>);
+
+const REMOTE_HEADERS: [Header; 3] = [
+    ("name", Some(SortOrder::Label)),
+    ("url", Some(SortOrder::Url)),
+    ("tags", Some(SortOrder::Tags)),
+];
+const REF_HEADERS: [Header; 2] = [("name", Some(SortOrder::Label)), ("oid", None)];
+const SELECT_HEADERS: [Header; 4] = [
+    ("", None),
+    ("name", Some(SortOrder::Label)),
+    ("url", Some(SortOrder::Url)),
+    ("tags", Some(SortOrder::Tags)),
+];
+
+/// Columns before the last one stop growing here; the last takes what is left.
+const COLUMN_CAP: usize = 60;
+const COLUMN_GAP: u16 = 2;
+
+/// Width of each column: the widest of its header and cells, capped.
+fn column_widths(headers: &[Header], rows: &[Vec<String>]) -> Vec<usize> {
+    let width = |s: &str| Line::from(s).width();
+    headers
+        .iter()
+        .enumerate()
+        .map(|(i, (title, _))| {
+            rows.iter()
+                .filter_map(|r| r.get(i))
+                .map(|c| width(c))
+                .fold(width(title) + 2, usize::max)
+                .min(COLUMN_CAP)
+        })
+        .collect()
+}
+
+/// A header title, with a direction arrow when it is the sorted column.
+fn header_text(
+    title: &str,
+    column: Option<SortOrder>,
+    active: SortOrder,
+    reversed: bool,
+) -> String {
+    match column {
+        Some(c) if c == active && reversed => format!("{title} \u{2193}"),
+        _ => title.to_owned(),
+    }
+}
+
+/// One row to draw: its cells and the style they get.
+struct TableRow {
+    cells: Vec<String>,
+    style: Style,
+}
+
+fn render_table(
     frame: &mut Frame<'_>,
     area: Rect,
     title: String,
-    items: Vec<ListItem<'_>>,
-    cursor: usize,
+    headers: &[Header],
+    list: &List,
+    rows: Vec<TableRow>,
     theme: &Theme,
 ) {
     let block = Block::bordered()
@@ -37,16 +93,46 @@ fn render_list(
         ))
         .border_style(Style::new().fg(theme.dim))
         .style(base(theme));
-    let list = ListWidget::new(items)
+
+    let cells: Vec<Vec<String>> = rows.iter().map(|r| r.cells.clone()).collect();
+    let widths = column_widths(headers, &cells);
+    let constraints = widths.iter().enumerate().map(|(i, &w)| {
+        if i + 1 == widths.len() {
+            Constraint::Fill(1)
+        } else {
+            Constraint::Length(u16::try_from(w).unwrap_or(u16::MAX))
+        }
+    });
+
+    let header = Row::new(headers.iter().map(|&(title, column)| {
+        let sorted = column == Some(list.sort_order());
+        let style = if sorted {
+            Style::new().fg(theme.accent).add_modifier(Modifier::BOLD)
+        } else {
+            Style::new().fg(theme.dim)
+        };
+        Cell::from(header_text(
+            title,
+            column,
+            list.sort_order(),
+            list.reversed(),
+        ))
+        .style(style)
+    }));
+    let body = rows.into_iter().map(|r| Row::new(r.cells).style(r.style));
+
+    let table = Table::new(body, constraints)
+        .header(header)
+        .column_spacing(COLUMN_GAP)
         .block(block)
-        .highlight_style(
+        .row_highlight_style(
             Style::new()
                 .bg(theme.selection)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("> ");
-    let mut state = ListState::default().with_selected(Some(cursor));
-    frame.render_stateful_widget(list, area, &mut state);
+    let mut state = TableState::default().with_selected(Some(list.cursor()));
+    frame.render_stateful_widget(table, area, &mut state);
 }
 
 /// `sort: label  ` for the status line, or nothing in the default order.
@@ -123,13 +209,22 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
         (Level::Refs, Some(remote)) => format!(" refs of {remote} "),
         _ => " remotes ".to_owned(),
     };
-    let items = app
-        .list()
-        .visible_labels()
-        .into_iter()
-        .map(ListItem::new)
-        .collect();
-    render_list(frame, body, title, items, app.list().cursor(), theme);
+    let (headers, rows): (&[Header], Vec<TableRow>) = {
+        let rows = app
+            .list()
+            .visible_cells()
+            .into_iter()
+            .map(|(_, cells)| TableRow {
+                cells: cells.to_vec(),
+                style: Style::new(),
+            })
+            .collect();
+        match app.level() {
+            Level::Refs => (&REF_HEADERS, rows),
+            Level::Remotes => (&REMOTE_HEADERS, rows),
+        }
+    };
+    render_table(frame, body, title, headers, app.list(), rows, theme);
 
     let line = if let Some(err) = app.error() {
         Line::from(Span::styled(err.to_owned(), Style::new().fg(theme.error)))
@@ -169,28 +264,33 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pendin
     let [body, status] =
         Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
 
-    let items = select
+    let rows = select
         .list()
-        .visible_rows()
+        .visible_cells()
         .into_iter()
-        .map(|(i, label)| {
-            if select.is_have(i) {
-                ListItem::new(Line::from(Span::styled(
-                    format!("(have) {label}"),
-                    Style::new().fg(theme.dim),
-                )))
+        .map(|(i, cells)| {
+            let (mark, style) = if select.is_have(i) {
+                ("(have)", Style::new().fg(theme.dim))
+            } else if select.is_checked(i) {
+                ("[x]", Style::new())
             } else {
-                let mark = if select.is_checked(i) { "[x]" } else { "[ ]" };
-                ListItem::new(format!("{mark} {label}"))
+                ("[ ]", Style::new())
+            };
+            TableRow {
+                cells: std::iter::once(mark.to_owned())
+                    .chain(cells.iter().cloned())
+                    .collect(),
+                style,
             }
         })
         .collect();
-    render_list(
+    render_table(
         frame,
         body,
         " add remotes ".to_owned(),
-        items,
-        select.list().cursor(),
+        &SELECT_HEADERS,
+        select.list(),
+        rows,
         theme,
     );
 
@@ -219,7 +319,12 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pendin
 
 #[cfg(test)]
 mod tests {
+    use ratatui::backend::TestBackend;
+
     use super::*;
+    use crate::git::Remote;
+    use crate::tui::keys::Action;
+    use crate::tui::theme::ThemeName;
 
     #[test]
     fn the_sort_bar_marks_the_active_column_and_the_direction() {
@@ -262,5 +367,75 @@ mod tests {
             sort_note(SortOrder::Url, true),
             Some("sort: url \u{2193}  ".to_owned())
         );
+    }
+
+    /// Draw into a test terminal and return each line of the screen.
+    fn screen(width: u16, height: u16, draw: impl FnOnce(&mut Frame<'_>)) -> Vec<String> {
+        let mut terminal = ratatui::Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(draw).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        (0..height)
+            .map(|y| (0..width).map(|x| buffer[(x, y)].symbol()).collect())
+            .collect()
+    }
+
+    fn remote(name: &str, url: &str, tags: &[&str]) -> Remote {
+        Remote {
+            name: name.into(),
+            url: url.into(),
+            tags: tags.iter().map(|t| (*t).into()).collect(),
+        }
+    }
+
+    #[test]
+    fn remote_columns_line_up_whatever_the_name_length() {
+        let app = App::new(vec![
+            remote("origin", "https://h/o", &[]),
+            remote("netdev/net-next", "https://h/n", &["merge"]),
+        ]);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(60, 8, |f| draw(f, &app, &theme, ""));
+        let url_col = |needle: &str| {
+            let line = lines.iter().find(|l| l.contains(needle)).unwrap();
+            line.find("https://").unwrap()
+        };
+        assert_eq!(url_col("origin"), url_col("netdev/net-next"));
+        // The tags column lines up too, and the header names the columns.
+        let tags_at = lines
+            .iter()
+            .find(|l| l.contains("merge"))
+            .unwrap()
+            .find("merge");
+        assert_eq!(tags_at, lines[1].find("tags"));
+        assert!(lines[1].contains("name") && lines[1].contains("url"));
+    }
+
+    #[test]
+    fn the_header_marks_the_sorted_column_and_direction() {
+        let mut app = App::new(vec![remote("a", "https://h/a", &[])]);
+        let mut no_refs = |_: &Remote| Ok(Vec::new());
+        for action in [
+            Action::Sort,
+            Action::ColumnNext,
+            Action::ColumnNext,
+            Action::Reverse,
+        ] {
+            app.update(action, &mut no_refs);
+        }
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(60, 6, |f| draw(f, &app, &theme, ""));
+        assert!(lines[1].contains("url \u{2193}"), "{:?}", lines[1]);
+    }
+
+    #[test]
+    fn a_long_last_column_is_clipped_not_wrapped() {
+        let app = App::new(vec![remote(
+            "a",
+            "https://h/a",
+            &["x".repeat(100).as_str()],
+        )]);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(40, 6, |f| draw(f, &app, &theme, ""));
+        assert_eq!(lines.iter().filter(|l| l.contains('x')).count(), 1);
     }
 }

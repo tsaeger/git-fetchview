@@ -36,9 +36,10 @@ pub fn pick(
     result
 }
 
-/// Rows of list on screen: the terminal height minus the border and status line.
+/// Rows of list on screen: the terminal height minus the border, the column
+/// header and the status line.
 fn list_rows(terminal: &ratatui::DefaultTerminal) -> Result<usize> {
-    Ok(usize::from(terminal.size()?.height.saturating_sub(3)).max(1))
+    Ok(usize::from(terminal.size()?.height.saturating_sub(4)).max(1))
 }
 
 fn run(

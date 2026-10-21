@@ -1,9 +1,10 @@
 ---
 id: TASK-4
 title: align picker columns with ratatui Table
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-21T19:21:00Z'
+updated_date: '2026-10-21T19:39:00Z'
 labels:
   - tui
 dependencies: []
@@ -27,7 +28,13 @@ The README demo (TASK-1) should be recorded after this lands.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Name, url and tags are aligned in the remotes, refs and add pickers
-- [ ] #2 Filter and sort behave exactly as before (existing tests pass unchanged)
-- [ ] #3 Narrow terminals truncate the last column instead of wrapping
+- [x] #1 Name, url and tags are aligned in the remotes, refs and add pickers
+- [x] #2 Filter and sort behave exactly as before (existing tests pass unchanged)
+- [x] #3 Narrow terminals truncate the last column instead of wrapping
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Pickers draw name, url and tags as aligned columns with ratatui Table, under a header row that marks the sorted column and its direction. List gained with_cells and visible_cells; the joined cells stay the filter input, so filtering and sorting are unchanged. The add picker's Row now carries cells and tags (tags sorting was a no-op before). list_rows subtracts the header line. Tests: column alignment, header arrow, last-column clipping on a TestBackend; checked by eye in a pty.
+<!-- SECTION:FINAL_SUMMARY:END -->

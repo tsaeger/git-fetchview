@@ -11,12 +11,14 @@ use crate::tui::list::{List, SortKeys};
 /// One selectable row.
 #[derive(Debug, Clone)]
 pub struct Row {
-    /// Text to show and filter on.
-    pub label: String,
+    /// Columns to show; filtering matches all of them.
+    pub cells: Vec<String>,
     /// Name to sort by in label order.
     pub name: String,
     /// URL to sort by in URL order.
     pub url: String,
+    /// Tags to sort by in tags order.
+    pub tags: String,
     /// Already present: shown, but cannot be checked.
     pub have: bool,
 }
@@ -53,12 +55,12 @@ impl Select {
             .map(|r| SortKeys {
                 name: r.name.clone(),
                 url: r.url.clone(),
-                tags: String::new(),
+                tags: r.tags.clone(),
                 // Rows already present stay below the new ones.
                 group: u8::from(r.have),
             })
             .collect();
-        let list = List::with_keys(rows.into_iter().map(|r| r.label).collect(), keys);
+        let list = List::with_cells(rows.into_iter().map(|r| r.cells).collect(), keys);
         Self {
             list,
             have,
@@ -239,19 +241,22 @@ mod tests {
     fn rows() -> Vec<Row> {
         vec![
             Row {
-                label: "net  https://h/net".into(),
+                cells: vec!["net".into(), "https://h/net".into(), String::new()],
+                tags: String::new(),
                 name: "net".into(),
                 url: "https://h/net".into(),
                 have: false,
             },
             Row {
-                label: "mm  https://h/mm".into(),
+                cells: vec!["mm".into(), "https://h/mm".into(), String::new()],
+                tags: String::new(),
                 name: "mm".into(),
                 url: "https://h/mm".into(),
                 have: true,
             },
             Row {
-                label: "usb  https://h/usb".into(),
+                cells: vec!["usb".into(), "https://h/usb".into(), String::new()],
+                tags: String::new(),
                 name: "usb".into(),
                 url: "https://h/usb".into(),
                 have: false,

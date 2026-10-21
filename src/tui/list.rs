@@ -54,6 +54,7 @@ pub struct SortKeys {
 #[derive(Debug, Clone, Default)]
 pub struct List {
     labels: Vec<String>,
+    cells: Vec<Vec<String>>,
     keys: Vec<SortKeys>,
     sort: SortOrder,
     reversed: bool,
@@ -82,8 +83,33 @@ impl List {
     #[must_use]
     pub fn with_keys(labels: Vec<String>, keys: Vec<SortKeys>) -> Self {
         debug_assert_eq!(labels.len(), keys.len());
+        let cells = labels.iter().map(|l| vec![l.clone()]).collect();
         Self {
             labels,
+            cells,
+            keys,
+            ..Self::default()
+        }
+    }
+
+    /// Build a list whose rows are columns of cells. Filtering matches the
+    /// cells joined with two spaces, so a filter sees the whole row.
+    #[must_use]
+    pub fn with_cells(cells: Vec<Vec<String>>, keys: Vec<SortKeys>) -> Self {
+        debug_assert_eq!(cells.len(), keys.len());
+        let labels = cells
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .filter(|c| !c.is_empty())
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join("  ")
+            })
+            .collect();
+        Self {
+            labels,
+            cells,
             keys,
             ..Self::default()
         }
@@ -194,6 +220,15 @@ impl List {
         self.visible()
             .into_iter()
             .map(|i| (i, self.labels[i].as_str()))
+            .collect()
+    }
+
+    /// Visible rows as `(original index, cells)`.
+    #[must_use]
+    pub fn visible_cells(&self) -> Vec<(usize, &[String])> {
+        self.visible()
+            .into_iter()
+            .map(|i| (i, self.cells[i].as_slice()))
             .collect()
     }
 
@@ -615,6 +650,29 @@ mod tests {
         assert_eq!(SortOrder::Default.name(), "default");
         assert_eq!(SortOrder::Label.name(), "label");
         assert_eq!(SortOrder::Url.name(), "url");
+    }
+
+    #[test]
+    fn cell_rows_filter_on_the_whole_row_and_skip_empty_cells() {
+        let cells = |a: &str, b: &str, c: &str| vec![a.to_owned(), b.to_owned(), c.to_owned()];
+        let mut l = List::with_cells(
+            vec![
+                cells("origin", "https://h/o", ""),
+                cells("net", "https://h/n", "merge"),
+            ],
+            vec![SortKeys::default(), SortKeys::default()],
+        );
+        assert_eq!(
+            l.visible_labels(),
+            ["origin  https://h/o", "net  https://h/n  merge"]
+        );
+        l.push('m');
+        l.push('e');
+        l.push('r');
+        let rows = l.visible_cells();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, 1);
+        assert_eq!(rows[0].1, ["net", "https://h/n", "merge"]);
     }
 
     #[test]

@@ -42,12 +42,8 @@ pub struct Selection {
 /// Fetches the refs of a remote (`git ls-remote`).
 pub type Loader<'a> = dyn FnMut(&Remote) -> Result<Vec<RemoteRef>> + 'a;
 
-fn remote_label(r: &Remote) -> String {
-    if r.tags.is_empty() {
-        format!("{}  {}", r.name, r.url)
-    } else {
-        format!("{}  {}  [{}]", r.name, r.url, r.tags.join(","))
-    }
+fn remote_cells(r: &Remote) -> Vec<String> {
+    vec![r.name.clone(), r.url.clone(), r.tags.join(",")]
 }
 
 /// Picker state.
@@ -70,7 +66,7 @@ impl App {
     /// Start at the remote picker.
     #[must_use]
     pub fn new(remotes: Vec<Remote>) -> Self {
-        let labels = remotes.iter().map(remote_label).collect();
+        let cells = remotes.iter().map(remote_cells).collect();
         let keys = remotes
             .iter()
             .map(|r| SortKeys {
@@ -83,7 +79,7 @@ impl App {
             .collect();
         Self {
             remotes,
-            remote_list: List::with_keys(labels, keys),
+            remote_list: List::with_cells(cells, keys),
             refs: Vec::new(),
             ref_list: List::default(),
             level: Level::Remotes,
@@ -270,9 +266,11 @@ impl App {
                             Some(Error::NoRefs(self.remotes[index].name.clone()).to_string());
                     }
                     Ok(refs) => {
-                        let labels = refs
+                        let cells = refs
                             .iter()
-                            .map(|r| format!("{}  {}", r.name, r.oid.get(..7).unwrap_or(&r.oid)))
+                            .map(|r| {
+                                vec![r.name.clone(), r.oid.get(..7).unwrap_or(&r.oid).to_owned()]
+                            })
                             .collect();
                         let keys = refs
                             .iter()
@@ -283,7 +281,7 @@ impl App {
                                 group: 0,
                             })
                             .collect();
-                        self.ref_list = List::with_keys(labels, keys)
+                        self.ref_list = List::with_cells(cells, keys)
                             .with_cycle(vec![SortOrder::Default, SortOrder::Label]);
                         self.refs = refs;
                         self.chosen = Some(index);
@@ -342,7 +340,7 @@ mod tests {
         ]);
         assert_eq!(
             a.list().visible_labels(),
-            ["origin  u", "netdev/net  v  [merge,maintainers]"]
+            ["origin  u", "netdev/net  v  merge,maintainers"]
         );
     }
 

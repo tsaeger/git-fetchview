@@ -86,9 +86,10 @@ fn target(args: &AddArgs) -> Result<(PathBuf, String, Scope)> {
 
 fn row(entry: &Entry, have: bool) -> Row {
     Row {
-        label: row_label(entry),
+        cells: row_cells(entry),
         name: entry.display_label(),
         url: entry.url.clone(),
+        tags: entry.tags.iter().cloned().collect::<Vec<_>>().join(","),
         have,
     }
 }
@@ -108,9 +109,9 @@ fn picker_rows(plan: &Plan) -> Vec<Row> {
         .collect()
 }
 
-fn row_label(entry: &Entry) -> String {
+fn row_cells(entry: &Entry) -> Vec<String> {
     let tags = entry.tags.iter().cloned().collect::<Vec<_>>().join(",");
-    format!("{}  {}  [{tags}]", entry.display_label(), entry.url)
+    vec![entry.display_label(), entry.url.clone(), tags]
 }
 
 /// Collect remotes from a source into a remotes file.
@@ -276,8 +277,8 @@ mod tests {
             rows.iter().map(|r| r.have).collect::<Vec<_>>(),
             [false, true, true]
         );
-        assert!(rows[0].label.starts_with("p/new"));
-        assert!(rows[1].label.starts_with("p/mine"));
-        assert!(rows[2].label.starts_with("p/other"));
+        assert!(rows[0].cells[0].starts_with("p/new"));
+        assert!(rows[1].cells[0].starts_with("p/mine"));
+        assert!(rows[2].cells[0].starts_with("p/other"));
     }
 }
