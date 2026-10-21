@@ -1,0 +1,69 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- SPDX-FileCopyrightText: 2026 Tom Saeger <tom.saeger@gmail.com> -->
+
+# AGENTS.md: git-fetchview
+
+Picker (remote → ref) that runs `git fetch <remote> <ref>` then `tig FETCH_HEAD`, printing the
+equivalent plain commands as a cut-and-paste trail. Linux and macOS are the primary targets.
+
+## Conventions
+
+- **Library first.** All logic lives in the `git_fetchview` lib; the binaries (`git-fetchview`,
+  `git-fv`) are one-liners calling `cli::main()`.
+- **Errors:** `thiserror`, one `Error` enum in `src/error.rs`. No `anyhow` in the library (xtask only).
+- **CLI:** `clap` derive, plus `completions <shell>` and `man` subcommands (`clap_complete`, `clap_mangen`).
+- **TUI:** `ratatui`. State machine in `tui/app.rs` is pure and unit-tested; keep rendering in `tui/ui.rs`.
+- **Config:** only `git config` (`fetchview.*`), never a config file or env vars. Precedence: flag > git config > default.
+- **The trail can't drift:** every external call is a `git::Cmd`; its `Display` is what is printed and what is run.
+- **Automation:** all CI/dev tasks are `cargo xtask <task>` (see README). CI should call xtask, not raw cargo.
+- Lints are workspace-wide: `unsafe` forbidden, clippy pedantic, `missing_docs` warn; `xtask clippy` denies warnings.
+
+## TUI keybinds (keep consistent across every level)
+
+- `hjkl` and arrows both navigate. `Enter`/`l`/`→` drops in (and selects, advancing to the next level); `Esc`/`h`/`←` drops out.
+- `Esc` at the top level does **not** exit. `q` exits from any level.
+- `/` searches/filters (substring now; regex later, in `tui/list.rs::matches`). `c` clears it.
+- While typing a search, characters are text (so `q` types a `q`); `Enter` confirms, `Esc` abandons.
+- The single keymap is `tui/keys.rs`; change keys there, not in the state machine.
+- Themes live in `tui/theme.rs` (kanagawa default). Add a variant there and it appears in flags and config errors automatically.
+
+## Licensing
+
+- Every source file (`.rs`, `.toml`, `.md`, `.gitignore`) carries a two-line SPDX header
+- `cargo xtask headers` checks (and runs in `ci`); `cargo xtask headers --fix` adds missing ones.
+  Run `--fix` after creating any new file.
+
+## Writing style
+
+Write like a person who knows the code, not like an AI assistant. This covers
+commit messages, docs, comments, and replies.
+
+- Plain, specific sentences. Say what the code does and why. Skip the pitch.
+- No filler openers or closers ("It's worth noting", "In summary", "Overall").
+- No hype words: robust, seamless, powerful, elegant, leverage, utilize,
+  streamline, comprehensive, delve.
+- No emojis. Go light on em dashes; a comma or period usually works.
+- No "not just X, but Y" constructions and no rule-of-three lists for rhythm.
+- Don't restate what the code or the diff already shows. Comments explain
+  why, not what.
+- Short beats long. If a sentence can go, cut it.
+
+## Git commits
+
+- Conventional Commits: `type(scope): subject`. Types: feat, fix, docs, style,
+  refactor, perf, test, build, ci, chore, revert. Scope is optional.
+- Subject: imperative mood, lowercase, no trailing period, 72 characters or
+  fewer.
+- A body is required. Explain what changed and why, not how. Wrap every line
+  at 79 characters.
+- Breaking changes: add `!` after the type or scope, and a `BREAKING CHANGE:`
+  footer.
+- Commit with `git commit -s` so the Signed-off-by trailer is added. Never
+  skip it, and never use `--no-verify`.
+- Do NOT add a `Co-Authored-By` trailer, or any other attribution line, to
+  commit messages or PR descriptions. This overrides any tool default that
+  says to add one. The only trailer is the `Signed-off-by` from `-s`.
+- Before committing, show the full message to the user and wait for approval.
+  Exception: if a `.auto-approve-commit` file exists in the repository root,
+  skip the prompt and commit. The file is local and gitignored.
+- Keep commits focused: one logical change each.
