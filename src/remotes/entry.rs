@@ -216,6 +216,7 @@ mod tests {
             "ssh://git@host/a/b",
             "git@github.com:a/b.git",
             "ssh://[::1]/a/b",
+            "git@[::1]:a/b",
         ] {
             assert!(validate_url(url).is_ok(), "{url}");
         }

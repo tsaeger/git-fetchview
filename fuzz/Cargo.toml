@@ -26,4 +26,28 @@ path = "fuzz_targets/parse_remotes.rs"
 test = false
 doc = false
 
+[[bin]]
+name = "parse_merge_subject"
+path = "fuzz_targets/parse_merge_subject.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_maintainers"
+path = "fuzz_targets/parse_maintainers.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_remotes_file"
+path = "fuzz_targets/parse_remotes_file.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "validate_url"
+path = "fuzz_targets/validate_url.rs"
+test = false
+doc = false
+
 [workspace]
