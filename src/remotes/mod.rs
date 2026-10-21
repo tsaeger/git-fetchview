@@ -5,6 +5,7 @@
 
 pub mod entry;
 pub mod file;
+pub mod plan;
 pub mod registry;
 pub mod source;
 

@@ -7,6 +7,7 @@
 //! workflow and then do it without this tool.
 
 pub mod cli;
+pub mod commands;
 pub mod config;
 pub mod error;
 pub mod git;

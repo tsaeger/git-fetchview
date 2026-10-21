@@ -67,6 +67,23 @@ pub enum Error {
         source: io::Error,
     },
 
+    /// `add` needs to ask which remotes to add, but there is no terminal.
+    #[error("no terminal to choose from; pass --all to add every new remote")]
+    NotATerminal,
+
+    /// `remove` matched nothing.
+    #[error("no collected remote matches `{0}`")]
+    NotFound(String),
+
+    /// `remove` matched more than one repo.
+    #[error("`{target}` matches more than one remote:\n{matches}")]
+    Ambiguous {
+        /// What the user typed.
+        target: String,
+        /// One `label  url` per line.
+        matches: String,
+    },
+
     /// Terminal I/O failed.
     #[error("terminal error: {0}")]
     Terminal(#[from] io::Error),

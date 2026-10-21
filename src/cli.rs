@@ -4,11 +4,13 @@
 //! Command line: argument parsing and the top-level flow.
 
 use std::io;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 
+use crate::commands;
 use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::git::{self, Cmd};
@@ -41,6 +43,65 @@ pub enum Command {
     },
     /// Print the man page (roff) to stdout.
     Man,
+    /// Collect remotes from a source into a remotes file.
+    Add(AddArgs),
+    /// List collected remotes.
+    List,
+    /// Remove a collected remote by URL or label.
+    Remove {
+        /// A URL or an exact label.
+        target: String,
+    },
+}
+
+/// Arguments for `add`.
+#[derive(Debug, Args)]
+pub struct AddArgs {
+    /// Write to this file instead of `.git/fetchview.remotes`, and register it.
+    #[arg(long, global = true)]
+    pub file: Option<PathBuf>,
+
+    /// Register the file in `~/.gitconfig` instead of the local config.
+    #[arg(long, requires = "file", global = true)]
+    pub global: bool,
+
+    /// Add every new remote without opening the picker.
+    #[arg(long, global = true)]
+    pub all: bool,
+
+    /// Print what would be written and change nothing.
+    #[arg(long, global = true)]
+    pub dry_run: bool,
+
+    /// Where to look.
+    #[command(subcommand)]
+    pub source: AddSource,
+}
+
+/// Where `add` looks for remotes.
+#[derive(Debug, Subcommand)]
+pub enum AddSource {
+    /// Pull URLs from merge commit subjects.
+    Merges {
+        /// Stop after this many merges.
+        #[arg(short = 'n', long)]
+        max: Option<usize>,
+        /// Revision range (default: HEAD).
+        range: Option<String>,
+    },
+    /// Pull `T: git` URLs from a MAINTAINERS file.
+    Maintainers {
+        /// Path to the file (default: MAINTAINERS at the worktree root).
+        path: Option<PathBuf>,
+    },
+    /// Add URLs given by hand.
+    Url {
+        /// Read URLs from this file, one per line; `-` is stdin.
+        #[arg(long)]
+        from_file: Option<String>,
+        /// URLs to add.
+        urls: Vec<String>,
+    },
 }
 
 /// Parse arguments, run, and turn errors into an exit code. Shared by both binaries.
@@ -67,6 +128,9 @@ fn run(cli: &Cli) -> Result<()> {
             Ok(())
         }
         Some(Command::Man) => Ok(clap_mangen::Man::new(Cli::command()).render(&mut io::stdout())?),
+        Some(Command::Add(args)) => commands::add(args),
+        Some(Command::List) => commands::list(),
+        Some(Command::Remove { target }) => commands::remove(target),
         None => pick_and_view(cli.theme),
     }
 }
