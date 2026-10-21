@@ -50,6 +50,36 @@ impl Cmd {
         Self::new("git", ["config", "--get", key])
     }
 
+    /// `git config --type=path --show-origin --get-all <key>`
+    #[must_use]
+    pub fn config_paths(key: &str) -> Self {
+        Self::new(
+            "git",
+            ["config", "--type=path", "--show-origin", "--get-all", key],
+        )
+    }
+
+    /// `git config --add <scope_flag> <key> <value>`, e.g. `--local`.
+    #[must_use]
+    pub fn config_add(scope_flag: &str, key: &str, value: &str) -> Self {
+        Self::new("git", ["config", "--add", scope_flag, key, value])
+    }
+
+    /// `git rev-parse --path-format=absolute --git-common-dir`
+    #[must_use]
+    pub fn git_common_dir() -> Self {
+        Self::new(
+            "git",
+            ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        )
+    }
+
+    /// `git rev-parse --show-toplevel`
+    #[must_use]
+    pub fn toplevel() -> Self {
+        Self::new("git", ["rev-parse", "--show-toplevel"])
+    }
+
     /// `tig FETCH_HEAD`
     #[must_use]
     pub fn tig_fetch_head() -> Self {
@@ -255,6 +285,18 @@ mod tests {
             "git@github.com:a/b.git"
         );
         assert_eq!(redact_url("/srv/git/repo"), "/srv/git/repo");
+    }
+
+    #[test]
+    fn config_commands_display() {
+        assert_eq!(
+            Cmd::config_add("--local", "fetchview.remotes", "fetchview.remotes").to_string(),
+            "git config --add --local fetchview.remotes fetchview.remotes"
+        );
+        assert_eq!(
+            Cmd::config_paths("fetchview.remotes").to_string(),
+            "git config --type=path --show-origin --get-all fetchview.remotes"
+        );
     }
 
     #[test]
