@@ -37,13 +37,15 @@ fn parse_line(line: &str) -> Line {
         Ok(url) => url,
         Err(Rejected(reason)) => return Line::Bad(reason),
     };
-    let label = fields
-        .next()
-        .map(str::trim)
+    let raw_label = fields.next().unwrap_or_default();
+    let raw_tags = fields.next().unwrap_or_default();
+    if raw_label.chars().any(char::is_control) || raw_tags.chars().any(char::is_control) {
+        return Line::Bad("control character in label or tags");
+    }
+    let label = Some(raw_label.trim())
         .filter(|l| !l.is_empty())
         .map(str::to_owned);
-    let tags = fields
-        .next()
+    let tags = Some(raw_tags)
         .map(|t| {
             t.split(',')
                 .map(str::trim)
@@ -154,6 +156,10 @@ pub fn write_atomic(path: &Path, text: &str) -> Result<()> {
         path: path.to_owned(),
         source,
     };
+    // Write through a symlink instead of replacing it, so a list shared by
+    // linking to it stays shared.
+    let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+    let path = target.as_path();
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         fs::create_dir_all(dir).map_err(io_err)?;
     }
@@ -162,6 +168,9 @@ pub fn write_atomic(path: &Path, text: &str) -> Result<()> {
         .map_or_else(|| "remotes".into(), |n| n.to_string_lossy().into_owned());
     let tmp = path.with_file_name(format!(".{name}.tmp"));
     fs::write(&tmp, text).map_err(io_err)?;
+    if let Ok(meta) = fs::metadata(path) {
+        fs::set_permissions(&tmp, meta.permissions()).map_err(io_err)?;
+    }
     fs::rename(&tmp, path).map_err(io_err)
 }
 
@@ -245,6 +254,46 @@ git://git.kernel.org/pub/scm/linux/kernel/git/davem/net-next
         assert_eq!(n, 1);
         assert!(!out.contains("netdev/net"));
         assert!(out.contains("# collected"));
+    }
+
+    #[test]
+    fn control_characters_in_labels_and_tags_are_rejected() {
+        let parsed = parse(
+            "https://h/p/a\tla\x1b]0;PWNED\x07bel\tt\nhttps://h/p/b\tok\tt\x1b[31mred\nhttps://h/p/c\tfine\tt\n",
+        );
+        assert_eq!(parsed.entries.len(), 1);
+        assert_eq!(parsed.entries[0].label.as_deref(), Some("fine"));
+        assert_eq!(parsed.warnings.len(), 2);
+        assert!(parsed.warnings[0].starts_with("line 1:"));
+    }
+
+    #[test]
+    fn write_atomic_writes_through_a_symlink_and_keeps_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("shared");
+        std::fs::write(&real, "old\n").unwrap();
+        let link = dir.path().join("mine");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        write_atomic(&link, "new\n").unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), "new\n");
+    }
+
+    #[test]
+    fn write_atomic_keeps_the_existing_file_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("remotes");
+        std::fs::write(&path, "old\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o664)).unwrap();
+        write_atomic(&path, "new\n").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o664);
     }
 
     #[test]

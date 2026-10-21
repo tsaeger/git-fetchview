@@ -83,6 +83,12 @@ pub fn validate_url(raw: &str) -> Result<String, Rejected> {
             return Err(Rejected("unsupported scheme"));
         }
         let authority = rest.split('/').next().unwrap_or_default();
+        if authority.starts_with('-') {
+            return Err(Rejected("authority starts with '-'"));
+        }
+        if authority.contains('%') {
+            return Err(Rejected("percent-encoding in host"));
+        }
         check_host(host_of(authority))?;
     } else {
         let Some((head, path)) = url.split_once(':') else {
@@ -93,6 +99,12 @@ pub fn validate_url(raw: &str) -> Result<String, Rejected> {
         }
         if path.is_empty() {
             return Err(Rejected("empty path"));
+        }
+        if path.starts_with('-') {
+            return Err(Rejected("path starts with '-'"));
+        }
+        if head.contains('%') {
+            return Err(Rejected("percent-encoding in host"));
         }
         check_host(host_of(head))?;
     }
@@ -247,6 +259,10 @@ mod tests {
             "https://h/a b",
             "host:",
             "a/b:c",
+            "ssh://-oProxyCommand=touch${IFS}pwn@host/p",
+            "ssh://%2DoProxyCommand=x/p",
+            "git@host:-oProxyCommand=x",
+            "git@-host:p",
         ] {
             assert!(validate_url(url).is_err(), "{url:?}");
         }

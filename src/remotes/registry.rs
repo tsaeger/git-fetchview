@@ -39,10 +39,12 @@ impl Scope {
 /// Turn `git config --show-origin --get-all` output into file paths.
 ///
 /// A relative value is resolved against the directory of the config file it
-/// came from, like `include.path`. Values from the command line, stdin or a
-/// blob have no directory and are ignored.
+/// came from, like `include.path`. Git prints a relative origin (such as
+/// `.git/config`) relative to the worktree top, not to where we were run, so
+/// `base` is that top. Values from the command line, stdin or a blob have no
+/// directory and are ignored.
 #[must_use]
-pub fn parse_pointers(text: &str) -> Vec<PathBuf> {
+pub fn parse_pointers(text: &str, base: &Path) -> Vec<PathBuf> {
     text.lines()
         .filter_map(|line| {
             let (origin, value) = line.split_once('\t')?;
@@ -51,10 +53,13 @@ pub fn parse_pointers(text: &str) -> Vec<PathBuf> {
             if value.is_absolute() {
                 return Some(value.to_owned());
             }
-            let base = Path::new(origin_file)
-                .parent()
-                .unwrap_or_else(|| Path::new(""));
-            Some(base.join(value))
+            let origin_path = Path::new(origin_file);
+            let origin_abs = if origin_path.is_absolute() {
+                origin_path.to_owned()
+            } else {
+                base.join(origin_path)
+            };
+            Some(origin_abs.parent().unwrap_or(base).join(value))
         })
         .collect()
 }
@@ -69,13 +74,22 @@ fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     out
 }
 
+/// Where git's relative config origins are relative to: the worktree top,
+/// or the current directory outside a worktree.
+fn origin_base() -> PathBuf {
+    match Cmd::toplevel().output() {
+        Ok(top) => PathBuf::from(top.trim()),
+        Err(_) => std::env::current_dir().unwrap_or_default(),
+    }
+}
+
 /// Every remotes file registered at any config level, in git's order.
 ///
 /// # Errors
 /// Git cannot be run.
 pub fn files() -> Result<Vec<PathBuf>> {
     match Cmd::config_paths(KEY).output() {
-        Ok(text) => Ok(dedupe_paths(parse_pointers(&text))),
+        Ok(text) => Ok(dedupe_paths(parse_pointers(&text, &origin_base()))),
         // `git config --get-all` exits 1 when the key is unset.
         Err(Error::Failed { status, .. }) if status.code() == Some(1) => Ok(Vec::new()),
         Err(e) => Err(e),
@@ -95,6 +109,9 @@ pub fn default_file() -> Result<PathBuf> {
 /// Make a path absolute and resolve symlinks in its directory, so the same
 /// file compares equal however it was spelled. The file need not exist.
 fn normalize(path: &Path) -> PathBuf {
+    if let Ok(real) = path.canonicalize() {
+        return real;
+    }
     let abs = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
     match (
         abs.parent().and_then(|d| d.canonicalize().ok()),
@@ -152,6 +169,19 @@ impl Loaded {
     }
 }
 
+/// Read the registered files. A failure to even list them (for example a bad
+/// `~user` in the config) becomes a warning, so the picker still starts.
+#[must_use]
+pub fn load_registered() -> Loaded {
+    match files() {
+        Ok(paths) => load(&paths),
+        Err(e) => Loaded {
+            files: Vec::new(),
+            warnings: vec![format!("{KEY}: {e}")],
+        },
+    }
+}
+
 /// Read every file. Problems become warnings, never errors.
 #[must_use]
 pub fn load(paths: &[PathBuf]) -> Loaded {
@@ -190,7 +220,10 @@ mod tests {
     #[test]
     fn absolute_values_are_kept() {
         let text = "file:/home/u/.gitconfig\t/data/k.remotes\n";
-        assert_eq!(parse_pointers(text), [PathBuf::from("/data/k.remotes")]);
+        assert_eq!(
+            parse_pointers(text, Path::new("/work")),
+            [PathBuf::from("/data/k.remotes")]
+        );
     }
 
     #[test]
@@ -198,10 +231,10 @@ mod tests {
         let text = "file:/home/u/.config/git/config\tlists/k.remotes\n\
                     file:.git/config\tfetchview.remotes\n";
         assert_eq!(
-            parse_pointers(text),
+            parse_pointers(text, Path::new("/work/repo")),
             [
                 PathBuf::from("/home/u/.config/git/lists/k.remotes"),
-                PathBuf::from(".git/fetchview.remotes"),
+                PathBuf::from("/work/repo/.git/fetchview.remotes"),
             ]
         );
     }
@@ -209,14 +242,17 @@ mod tests {
     #[test]
     fn values_from_the_command_line_or_stdin_are_ignored() {
         let text = "command line:\tx\nstandard input:\ty\nblob:abc\tz\n";
-        assert_eq!(parse_pointers(text), Vec::<PathBuf>::new());
+        assert_eq!(
+            parse_pointers(text, Path::new("/work")),
+            Vec::<PathBuf>::new()
+        );
     }
 
     #[test]
     fn duplicate_paths_are_listed_once_in_order() {
         let text = "file:/a/config\t/x\nfile:/b/config\t/y\nfile:/c/config\t/x\n";
         assert_eq!(
-            dedupe_paths(parse_pointers(text)),
+            dedupe_paths(parse_pointers(text, Path::new("/work"))),
             [PathBuf::from("/x"), PathBuf::from("/y")]
         );
     }
@@ -245,6 +281,16 @@ mod tests {
         let merged = load(&[a, b]).merged();
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].tags.len(), 2);
+    }
+
+    #[test]
+    fn same_path_sees_through_a_symlinked_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::write(&real, "x\n").unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert!(same_path(&real, &link));
     }
 
     #[test]

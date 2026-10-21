@@ -146,7 +146,7 @@ fn notice(warnings: &[String]) -> Option<String> {
 
 fn pick_and_view(theme_flag: Option<ThemeName>) -> Result<()> {
     let config = Config::load(theme_flag)?;
-    let loaded = registry::load(&registry::files()?);
+    let loaded = registry::load_registered();
     let remotes = remotes::picker_remotes(git::configured_remotes()?, &loaded.merged());
     if remotes.is_empty() {
         return Err(Error::NoRemotes);

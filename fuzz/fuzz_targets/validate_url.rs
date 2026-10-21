@@ -16,6 +16,14 @@ fuzz_target!(|text: &str| {
                     .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
         });
         assert!(!is_helper);
+        if let Some((_, rest)) = url.split_once("://") {
+            let authority = rest.split('/').next().unwrap_or_default();
+            assert!(!authority.starts_with('-'));
+            assert!(!authority.contains('%'));
+        } else if let Some((head, path)) = url.split_once(':') {
+            assert!(!head.contains('%'));
+            assert!(!path.starts_with('-'));
+        }
         let _ = git_fetchview::remotes::entry::key(&url);
         let _ = git_fetchview::remotes::entry::derive_label(&url);
     }

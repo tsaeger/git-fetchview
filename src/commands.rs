@@ -184,7 +184,7 @@ pub fn add(args: &AddArgs) -> Result<()> {
 /// # Errors
 /// Git cannot be run.
 pub fn list() -> Result<()> {
-    let loaded = registry::load(&registry::files()?);
+    let loaded = registry::load_registered();
     for warning in &loaded.warnings {
         eprintln!("warning: {warning}");
     }

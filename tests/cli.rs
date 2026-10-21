@@ -327,3 +327,42 @@ fn global_without_file_is_refused() {
     let out = repo.fv(&["add", "--all", "--global", "url", NET]);
     assert!(!out.status.success());
 }
+
+#[test]
+fn commands_work_from_a_subdirectory() {
+    let repo = Repo::new();
+    let sub = repo.path().join("drivers/net");
+    fs::create_dir_all(&sub).unwrap();
+    assert!(repo.fv(&["add", "--all", "url", NET]).status.success());
+
+    let listed = repo.fv_in(&sub, &["list"]);
+    assert!(
+        stdout(&listed).contains("netdev/net"),
+        "{}",
+        stderr(&listed)
+    );
+    assert!(!stderr(&listed).contains("warning"), "{}", stderr(&listed));
+
+    let again = repo.fv_in(&sub, &["add", "--all", "url", NET]);
+    assert!(again.status.success(), "{}", stderr(&again));
+    assert!(stderr(&again).contains("added 0"), "{}", stderr(&again));
+    assert_eq!(
+        repo.git(&["config", "--get-all", "fetchview.remotes"])
+            .lines()
+            .count(),
+        1
+    );
+
+    let removed = repo.fv_in(&sub, &["remove", "netdev/net"]);
+    assert!(removed.status.success(), "{}", stderr(&removed));
+    assert_eq!(repo.remotes_file().lines().count(), 0);
+}
+
+#[test]
+fn a_bad_pointer_is_a_warning_not_a_failure() {
+    let repo = Repo::new();
+    repo.git(&["config", "--add", "fetchview.remotes", "~nosuchuser/list"]);
+    let out = repo.fv(&["list"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stderr(&out).contains("warning"), "{}", stderr(&out));
+}
