@@ -54,7 +54,7 @@ fn run(
         let Event::Key(key) = event::read()? else {
             continue;
         };
-        let Some(command) = parser.feed(key, app.typing()) else {
+        let Some(command) = parser.feed(key, app.mode()) else {
             continue;
         };
         match app.update_with(command, &mut load) {
@@ -91,7 +91,7 @@ fn run_select(
         let Event::Key(key) = event::read()? else {
             continue;
         };
-        let Some(command) = parser.feed(key, state.typing()) else {
+        let Some(command) = parser.feed(key, state.mode()) else {
             continue;
         };
         match state.update_with(command) {

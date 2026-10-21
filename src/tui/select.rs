@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::tui::keys::{Action, Command};
+use crate::tui::keys::{Action, Command, Mode};
 use crate::tui::list::{List, SortKeys};
 
 /// One selectable row.
@@ -39,6 +39,7 @@ pub struct Select {
     have: Vec<bool>,
     checked: BTreeSet<usize>,
     typing: bool,
+    sorting: bool,
     viewport: usize,
 }
 
@@ -52,6 +53,7 @@ impl Select {
             .map(|r| SortKeys {
                 name: r.name.clone(),
                 url: r.url.clone(),
+                tags: String::new(),
                 // Rows already present stay below the new ones.
                 group: u8::from(r.have),
             })
@@ -62,6 +64,7 @@ impl Select {
             have,
             checked: BTreeSet::new(),
             typing: false,
+            sorting: false,
             viewport: 10,
         }
     }
@@ -70,6 +73,24 @@ impl Select {
     #[must_use]
     pub fn list(&self) -> &List {
         &self.list
+    }
+
+    /// True while a sort column is being chosen.
+    #[must_use]
+    pub fn sorting(&self) -> bool {
+        self.sorting
+    }
+
+    /// Which keymap is in force.
+    #[must_use]
+    pub fn mode(&self) -> Mode {
+        if self.typing {
+            Mode::Typing
+        } else if self.sorting {
+            Mode::Sort
+        } else {
+            Mode::Normal
+        }
     }
 
     /// True while a search is being typed.
@@ -125,10 +146,15 @@ impl Select {
         if self.list.motion(action, count, self.viewport) {
             return SelectFlow::Continue;
         }
+        if self.sorting {
+            self.update_sorting(action);
+            return SelectFlow::Continue;
+        }
         match action {
             Action::Search => self.typing = true,
             Action::Clear => self.list.clear(),
-            Action::Sort => self.list.cycle_sort(),
+            Action::Sort => self.sorting = true,
+            Action::Reverse => self.list.toggle_reverse(),
             Action::Toggle => {
                 if let Some(i) = self.list.selected() {
                     self.toggle(i);
@@ -140,6 +166,8 @@ impl Select {
             | Action::Quit
             | Action::Char(_)
             | Action::Backspace
+            | Action::ColumnPrev
+            | Action::ColumnNext
             | Action::Down
             | Action::Up
             | Action::Top
@@ -150,6 +178,17 @@ impl Select {
             | Action::PageUp => {}
         }
         SelectFlow::Continue
+    }
+
+    fn update_sorting(&mut self, action: Action) {
+        match action {
+            Action::ColumnPrev => self.list.shift_sort(-1),
+            Action::ColumnNext => self.list.shift_sort(1),
+            Action::Reverse => self.list.toggle_reverse(),
+            // Leaving the mode is all `s`, Esc and Enter do here.
+            Action::Sort | Action::Back | Action::Enter => self.sorting = false,
+            _ => {}
+        }
     }
 
     fn update_typing(&mut self, action: Action) {
@@ -195,7 +234,7 @@ impl Select {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::keys::Command;
+    use crate::tui::keys::{Command, Mode};
 
     fn rows() -> Vec<Row> {
         vec![
@@ -297,6 +336,18 @@ mod tests {
     }
 
     #[test]
+    fn sort_mode_leaves_on_esc_enter_or_s_without_confirming() {
+        let mut s = Select::new(rows());
+        s.update(Action::Sort);
+        assert_eq!(s.mode(), Mode::Sort);
+        assert_eq!(s.update(Action::Enter), SelectFlow::Continue);
+        assert!(!s.sorting());
+        s.update(Action::Sort);
+        s.update(Action::Back);
+        assert!(!s.sorting());
+    }
+
+    #[test]
     fn counts_and_paging_move_the_cursor() {
         let mut s = Select::new(rows());
         s.set_viewport(2);
@@ -321,9 +372,27 @@ mod tests {
     fn s_sorts_new_rows_and_keeps_present_rows_last() {
         let mut s = Select::new(rows());
         s.update(Action::Sort);
+        assert!(s.sorting());
+        s.update(Action::ColumnNext);
         assert_eq!(s.list().visible(), [0, 2, 1]);
-        s.update(Action::Sort);
+        s.update(Action::ColumnNext);
         assert_eq!(s.list().visible(), [0, 2, 1]);
+    }
+
+    #[test]
+    fn r_reverses_new_rows_and_keeps_present_rows_last() {
+        let mut s = Select::new(rows());
+        s.update(Action::Reverse);
+        assert_eq!(s.list().visible(), [2, 0, 1]);
+    }
+
+    #[test]
+    fn checks_survive_a_reverse() {
+        let mut s = Select::new(rows());
+        s.update(Action::Toggle);
+        s.update(Action::Reverse);
+        assert!(s.is_checked(0));
+        assert_eq!(s.list().selected(), Some(0));
     }
 
     #[test]
@@ -333,7 +402,8 @@ mod tests {
         s.update(Action::Down);
         s.update(Action::Toggle);
         s.update(Action::Sort);
-        s.update(Action::Sort);
+        s.update(Action::ColumnNext);
+        s.update(Action::ColumnNext);
         assert!(s.is_checked(2));
         assert_eq!(s.list().selected(), Some(2));
     }

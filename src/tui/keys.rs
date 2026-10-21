@@ -15,7 +15,8 @@
 //! | `h` / `Left` / `Esc`    | drop out (never exits at top level) |
 //! | `/`                     | search / filter                     |
 //! | `c`                     | clear search / filter               |
-//! | `s`                     | cycle the sort order                |
+//! | `s`                     | sort mode: `h`/`l` pick the column, `r` reverses, `s`/`Esc` done |
+//! | `r`                     | reverse the sort order              |
 //! | `Space`                 | toggle a row (multi-select)         |
 //! | `a`                     | toggle all visible rows (multi-select) |
 //! | `q` / `Ctrl-c`          | quit, from any level                |
@@ -56,6 +57,12 @@ pub enum Action {
     Clear,
     /// Cycle the sort order.
     Sort,
+    /// Flip the sort order.
+    Reverse,
+    /// Move the sort to the previous column (in sort mode).
+    ColumnPrev,
+    /// Move the sort to the next column (in sort mode).
+    ColumnNext,
     /// Toggle the row under the cursor (multi-select).
     Toggle,
     /// Toggle every visible row (multi-select).
@@ -64,6 +71,18 @@ pub enum Action {
     Char(char),
     /// Delete the last search character.
     Backspace,
+}
+
+/// Which keymap is in force.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Mode {
+    /// Browsing: the normal keymap.
+    #[default]
+    Normal,
+    /// Typing a search: characters are text.
+    Typing,
+    /// Choosing a sort column: `h` and `l` move between columns.
+    Sort,
 }
 
 /// An action with the count typed before it (`5j`, `3G`).
@@ -108,15 +127,14 @@ impl KeyParser {
         self.pending_g = false;
     }
 
-    /// Feed one key press. `typing` is true while a search is being entered,
-    /// when nothing is a prefix.
-    pub fn feed(&mut self, key: KeyEvent, typing: bool) -> Option<Command> {
+    /// Feed one key press. While a search is being typed nothing is a prefix.
+    pub fn feed(&mut self, key: KeyEvent, mode: Mode) -> Option<Command> {
         if key.kind == KeyEventKind::Release {
             return None;
         }
-        if typing {
+        if mode == Mode::Typing {
             self.reset();
-            return map(key, true).map(Command::from);
+            return map(key, mode).map(Command::from);
         }
         let plain = !key.modifiers.contains(KeyModifiers::CONTROL);
         if self.pending_g {
@@ -154,50 +172,84 @@ impl KeyParser {
             _ => {}
         }
         let count = self.count.take();
-        map(key, false).map(|action| Command { action, count })
+        map(key, mode).map(|action| Command { action, count })
     }
 }
 
-/// Translate one key press on its own; `typing` is true while a search is
-/// being entered. Prefixes (counts, `gg`) are handled by [`KeyParser`].
+/// Translate one key press on its own. Prefixes (counts, `gg`) are handled
+/// by [`KeyParser`].
 #[must_use]
-#[allow(clippy::match_same_arms)] // arms differ by `typing`, which is the point
-pub fn map(key: KeyEvent, typing: bool) -> Option<Action> {
+pub fn map(key: KeyEvent, mode: Mode) -> Option<Action> {
     if key.kind == KeyEventKind::Release {
         return None;
     }
     if key.modifiers.contains(KeyModifiers::CONTROL) {
-        return match (typing, key.code) {
+        return match (mode, key.code) {
             (_, KeyCode::Char('c')) => Some(Action::Quit),
-            (false, KeyCode::Char('d')) => Some(Action::HalfPageDown),
-            (false, KeyCode::Char('u')) => Some(Action::HalfPageUp),
-            (false, KeyCode::Char('f')) => Some(Action::PageDown),
-            (false, KeyCode::Char('b')) => Some(Action::PageUp),
+            (Mode::Typing, _) => None,
+            (_, KeyCode::Char('d')) => Some(Action::HalfPageDown),
+            (_, KeyCode::Char('u')) => Some(Action::HalfPageUp),
+            (_, KeyCode::Char('f')) => Some(Action::PageDown),
+            (_, KeyCode::Char('b')) => Some(Action::PageUp),
             _ => None,
         };
     }
-    match (typing, key.code) {
-        (_, KeyCode::Enter) => Some(Action::Enter),
-        (_, KeyCode::Esc) => Some(Action::Back),
-        (true, KeyCode::Backspace) => Some(Action::Backspace),
-        (true, KeyCode::Char(c)) => Some(Action::Char(c)),
-        (true, _) => None,
-        (false, KeyCode::Char('j') | KeyCode::Down) => Some(Action::Down),
-        (false, KeyCode::Char('k') | KeyCode::Up) => Some(Action::Up),
-        (false, KeyCode::Home) => Some(Action::Top),
-        (false, KeyCode::PageDown) => Some(Action::PageDown),
-        (false, KeyCode::PageUp) => Some(Action::PageUp),
-        (false, KeyCode::Char('G') | KeyCode::End) => Some(Action::Bottom),
-        (false, KeyCode::Char('l') | KeyCode::Right) => Some(Action::Enter),
-        (false, KeyCode::Char('h') | KeyCode::Left) => Some(Action::Back),
-        (false, KeyCode::Char(' ')) => Some(Action::Toggle),
-        (false, KeyCode::Char('a')) => Some(Action::ToggleAll),
-        (false, KeyCode::Char('s')) => Some(Action::Sort),
-        (false, KeyCode::Char('/')) => Some(Action::Search),
-        (false, KeyCode::Char('c')) => Some(Action::Clear),
-        (false, KeyCode::Char('q')) => Some(Action::Quit),
-        (false, _) => None,
+    match mode {
+        Mode::Typing => map_typing(key.code),
+        Mode::Normal => map_normal(key.code),
+        Mode::Sort => map_sort(key.code),
     }
+}
+
+fn map_typing(code: KeyCode) -> Option<Action> {
+    match code {
+        KeyCode::Enter => Some(Action::Enter),
+        KeyCode::Esc => Some(Action::Back),
+        KeyCode::Backspace => Some(Action::Backspace),
+        KeyCode::Char(c) => Some(Action::Char(c)),
+        _ => None,
+    }
+}
+
+/// Motions shared by browsing and sort mode.
+fn map_motion(code: KeyCode) -> Option<Action> {
+    match code {
+        KeyCode::Char('j') | KeyCode::Down => Some(Action::Down),
+        KeyCode::Char('k') | KeyCode::Up => Some(Action::Up),
+        KeyCode::Home => Some(Action::Top),
+        KeyCode::Char('G') | KeyCode::End => Some(Action::Bottom),
+        KeyCode::PageDown => Some(Action::PageDown),
+        KeyCode::PageUp => Some(Action::PageUp),
+        _ => None,
+    }
+}
+
+fn map_normal(code: KeyCode) -> Option<Action> {
+    map_motion(code).or(match code {
+        KeyCode::Enter | KeyCode::Char('l') | KeyCode::Right => Some(Action::Enter),
+        KeyCode::Esc | KeyCode::Char('h') | KeyCode::Left => Some(Action::Back),
+        KeyCode::Char(' ') => Some(Action::Toggle),
+        KeyCode::Char('a') => Some(Action::ToggleAll),
+        KeyCode::Char('s') => Some(Action::Sort),
+        KeyCode::Char('r') => Some(Action::Reverse),
+        KeyCode::Char('/') => Some(Action::Search),
+        KeyCode::Char('c') => Some(Action::Clear),
+        KeyCode::Char('q') => Some(Action::Quit),
+        _ => None,
+    })
+}
+
+fn map_sort(code: KeyCode) -> Option<Action> {
+    map_motion(code).or(match code {
+        KeyCode::Char('h') | KeyCode::Left => Some(Action::ColumnPrev),
+        KeyCode::Char('l') | KeyCode::Right => Some(Action::ColumnNext),
+        KeyCode::Char('r') => Some(Action::Reverse),
+        KeyCode::Char('s') => Some(Action::Sort),
+        KeyCode::Esc => Some(Action::Back),
+        KeyCode::Enter => Some(Action::Enter),
+        KeyCode::Char('q') => Some(Action::Quit),
+        _ => None,
+    })
 }
 
 #[cfg(test)]
@@ -211,7 +263,7 @@ mod tests {
     fn feed_all(parser: &mut KeyParser, keys: &[KeyCode]) -> Option<Command> {
         let mut last = None;
         for &code in keys {
-            last = parser.feed(key(code), false);
+            last = parser.feed(key(code), Mode::Normal);
         }
         last
     }
@@ -224,7 +276,7 @@ mod tests {
     #[test]
     fn a_lone_g_is_a_prefix_not_a_motion() {
         let mut p = KeyParser::default();
-        assert_eq!(p.feed(key(KeyCode::Char('g')), false), None);
+        assert_eq!(p.feed(key(KeyCode::Char('g')), Mode::Normal), None);
         assert_eq!(p.pending(), "g");
     }
 
@@ -240,7 +292,7 @@ mod tests {
     fn capital_g_goes_to_the_bottom_and_counts_pick_a_row() {
         let mut p = KeyParser::default();
         assert_eq!(
-            p.feed(key(KeyCode::Char('G')), false),
+            p.feed(key(KeyCode::Char('G')), Mode::Normal),
             cmd(Action::Bottom, None)
         );
         let got = feed_all(&mut p, &[KeyCode::Char('7'), KeyCode::Char('G')]);
@@ -262,7 +314,7 @@ mod tests {
             &[KeyCode::Char('1'), KeyCode::Char('0'), KeyCode::Down],
         );
         assert_eq!(got, cmd(Action::Down, Some(10)));
-        assert_eq!(p.feed(key(KeyCode::Char('0')), false), None);
+        assert_eq!(p.feed(key(KeyCode::Char('0')), Mode::Normal), None);
         assert_eq!(p.pending(), "");
     }
 
@@ -280,12 +332,15 @@ mod tests {
     fn esc_cancels_pending_input_without_going_back() {
         let mut p = KeyParser::default();
         feed_all(&mut p, &[KeyCode::Char('g')]);
-        assert_eq!(p.feed(key(KeyCode::Esc), false), None);
+        assert_eq!(p.feed(key(KeyCode::Esc), Mode::Normal), None);
         assert_eq!(p.pending(), "");
         feed_all(&mut p, &[KeyCode::Char('5')]);
-        assert_eq!(p.feed(key(KeyCode::Esc), false), None);
+        assert_eq!(p.feed(key(KeyCode::Esc), Mode::Normal), None);
         assert_eq!(p.pending(), "");
-        assert_eq!(p.feed(key(KeyCode::Esc), false), cmd(Action::Back, None));
+        assert_eq!(
+            p.feed(key(KeyCode::Esc), Mode::Normal),
+            cmd(Action::Back, None)
+        );
     }
 
     #[test]
@@ -297,7 +352,7 @@ mod tests {
         );
         assert_eq!(p.pending(), "");
         assert_eq!(
-            p.feed(key(KeyCode::Char('j')), false),
+            p.feed(key(KeyCode::Char('j')), Mode::Normal),
             cmd(Action::Down, None)
         );
     }
@@ -306,11 +361,11 @@ mod tests {
     fn nothing_is_a_chord_while_typing() {
         let mut p = KeyParser::default();
         assert_eq!(
-            p.feed(key(KeyCode::Char('g')), true),
+            p.feed(key(KeyCode::Char('g')), Mode::Typing),
             cmd(Action::Char('g'), None)
         );
         assert_eq!(
-            p.feed(key(KeyCode::Char('5')), true),
+            p.feed(key(KeyCode::Char('5')), Mode::Typing),
             cmd(Action::Char('5'), None)
         );
         assert_eq!(p.pending(), "");
@@ -320,27 +375,39 @@ mod tests {
     fn control_keys_page_and_are_ignored_while_typing() {
         let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
         let mut p = KeyParser::default();
-        assert_eq!(p.feed(ctrl('d'), false), cmd(Action::HalfPageDown, None));
-        assert_eq!(p.feed(ctrl('u'), false), cmd(Action::HalfPageUp, None));
-        assert_eq!(p.feed(ctrl('f'), false), cmd(Action::PageDown, None));
-        assert_eq!(p.feed(ctrl('b'), false), cmd(Action::PageUp, None));
         assert_eq!(
-            p.feed(key(KeyCode::PageDown), false),
+            p.feed(ctrl('d'), Mode::Normal),
+            cmd(Action::HalfPageDown, None)
+        );
+        assert_eq!(
+            p.feed(ctrl('u'), Mode::Normal),
+            cmd(Action::HalfPageUp, None)
+        );
+        assert_eq!(p.feed(ctrl('f'), Mode::Normal), cmd(Action::PageDown, None));
+        assert_eq!(p.feed(ctrl('b'), Mode::Normal), cmd(Action::PageUp, None));
+        assert_eq!(
+            p.feed(key(KeyCode::PageDown), Mode::Normal),
             cmd(Action::PageDown, None)
         );
         assert_eq!(
-            p.feed(key(KeyCode::PageUp), false),
+            p.feed(key(KeyCode::PageUp), Mode::Normal),
             cmd(Action::PageUp, None)
         );
-        assert_eq!(p.feed(ctrl('d'), true), None);
-        assert_eq!(p.feed(ctrl('c'), true), cmd(Action::Quit, None));
+        assert_eq!(p.feed(ctrl('d'), Mode::Typing), None);
+        assert_eq!(p.feed(ctrl('c'), Mode::Typing), cmd(Action::Quit, None));
     }
 
     #[test]
     fn home_and_end_still_jump() {
         let mut p = KeyParser::default();
-        assert_eq!(p.feed(key(KeyCode::Home), false), cmd(Action::Top, None));
-        assert_eq!(p.feed(key(KeyCode::End), false), cmd(Action::Bottom, None));
+        assert_eq!(
+            p.feed(key(KeyCode::Home), Mode::Normal),
+            cmd(Action::Top, None)
+        );
+        assert_eq!(
+            p.feed(key(KeyCode::End), Mode::Normal),
+            cmd(Action::Bottom, None)
+        );
     }
 
     #[test]
@@ -351,34 +418,110 @@ mod tests {
             (KeyCode::Char('h'), KeyCode::Left),
             (KeyCode::Char('l'), KeyCode::Right),
         ] {
-            assert_eq!(map(key(a), false), map(key(b), false));
+            assert_eq!(map(key(a), Mode::Normal), map(key(b), Mode::Normal));
         }
     }
 
     #[test]
     fn q_is_text_while_typing_but_quits_otherwise() {
-        assert_eq!(map(key(KeyCode::Char('q')), true), Some(Action::Char('q')));
-        assert_eq!(map(key(KeyCode::Char('q')), false), Some(Action::Quit));
+        assert_eq!(
+            map(key(KeyCode::Char('q')), Mode::Typing),
+            Some(Action::Char('q'))
+        );
+        assert_eq!(
+            map(key(KeyCode::Char('q')), Mode::Normal),
+            Some(Action::Quit)
+        );
     }
 
     #[test]
     fn space_and_a_toggle_but_only_when_not_typing() {
-        assert_eq!(map(key(KeyCode::Char(' ')), false), Some(Action::Toggle));
-        assert_eq!(map(key(KeyCode::Char('a')), false), Some(Action::ToggleAll));
-        assert_eq!(map(key(KeyCode::Char(' ')), true), Some(Action::Char(' ')));
-        assert_eq!(map(key(KeyCode::Char('a')), true), Some(Action::Char('a')));
+        assert_eq!(
+            map(key(KeyCode::Char(' ')), Mode::Normal),
+            Some(Action::Toggle)
+        );
+        assert_eq!(
+            map(key(KeyCode::Char('a')), Mode::Normal),
+            Some(Action::ToggleAll)
+        );
+        assert_eq!(
+            map(key(KeyCode::Char(' ')), Mode::Typing),
+            Some(Action::Char(' '))
+        );
+        assert_eq!(
+            map(key(KeyCode::Char('a')), Mode::Typing),
+            Some(Action::Char('a'))
+        );
+    }
+
+    #[test]
+    fn sort_mode_remaps_h_and_l_to_columns_and_keeps_the_motions() {
+        let m = |code| map(key(code), Mode::Sort);
+        assert_eq!(m(KeyCode::Char('h')), Some(Action::ColumnPrev));
+        assert_eq!(m(KeyCode::Left), Some(Action::ColumnPrev));
+        assert_eq!(m(KeyCode::Char('l')), Some(Action::ColumnNext));
+        assert_eq!(m(KeyCode::Right), Some(Action::ColumnNext));
+        assert_eq!(m(KeyCode::Char('r')), Some(Action::Reverse));
+        assert_eq!(m(KeyCode::Char('s')), Some(Action::Sort));
+        assert_eq!(m(KeyCode::Esc), Some(Action::Back));
+        assert_eq!(m(KeyCode::Enter), Some(Action::Enter));
+        assert_eq!(m(KeyCode::Char('j')), Some(Action::Down));
+        assert_eq!(m(KeyCode::Char('G')), Some(Action::Bottom));
+        assert_eq!(m(KeyCode::Char('q')), Some(Action::Quit));
+    }
+
+    #[test]
+    fn sort_mode_ignores_keys_that_would_change_the_list() {
+        for code in [
+            KeyCode::Char('/'),
+            KeyCode::Char('c'),
+            KeyCode::Char(' '),
+            KeyCode::Char('a'),
+        ] {
+            assert_eq!(map(key(code), Mode::Sort), None, "{code:?}");
+        }
+    }
+
+    #[test]
+    fn outside_sort_mode_h_and_l_still_go_out_and_in() {
+        assert_eq!(
+            map(key(KeyCode::Char('h')), Mode::Normal),
+            Some(Action::Back)
+        );
+        assert_eq!(
+            map(key(KeyCode::Char('l')), Mode::Normal),
+            Some(Action::Enter)
+        );
+    }
+
+    #[test]
+    fn r_reverses_but_only_when_not_typing() {
+        assert_eq!(
+            map(key(KeyCode::Char('r')), Mode::Normal),
+            Some(Action::Reverse)
+        );
+        assert_eq!(
+            map(key(KeyCode::Char('r')), Mode::Typing),
+            Some(Action::Char('r'))
+        );
     }
 
     #[test]
     fn s_sorts_but_only_when_not_typing() {
-        assert_eq!(map(key(KeyCode::Char('s')), false), Some(Action::Sort));
-        assert_eq!(map(key(KeyCode::Char('s')), true), Some(Action::Char('s')));
+        assert_eq!(
+            map(key(KeyCode::Char('s')), Mode::Normal),
+            Some(Action::Sort)
+        );
+        assert_eq!(
+            map(key(KeyCode::Char('s')), Mode::Typing),
+            Some(Action::Char('s'))
+        );
     }
 
     #[test]
     fn ctrl_c_always_quits() {
         let k = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-        assert_eq!(map(k, true), Some(Action::Quit));
-        assert_eq!(map(k, false), Some(Action::Quit));
+        assert_eq!(map(k, Mode::Typing), Some(Action::Quit));
+        assert_eq!(map(k, Mode::Normal), Some(Action::Quit));
     }
 }

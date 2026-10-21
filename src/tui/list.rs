@@ -3,9 +3,11 @@
 
 //! A filterable list with a cursor.
 
+use std::cmp::{Ordering, Reverse};
+
 use crate::tui::keys::Action;
 
-/// How the rows are ordered. `s` cycles through them.
+/// How the rows are ordered: the column being sorted by.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SortOrder {
     /// The order the rows were given in.
@@ -15,18 +17,13 @@ pub enum SortOrder {
     Label,
     /// By URL, case-insensitive, within each group.
     Url,
+    /// By tags, case-insensitive, within each group.
+    Tags,
 }
 
 impl SortOrder {
-    /// The next order in the cycle.
-    #[must_use]
-    pub fn next(self) -> Self {
-        match self {
-            Self::Default => Self::Label,
-            Self::Label => Self::Url,
-            Self::Url => Self::Default,
-        }
-    }
+    /// Every column, in the order they are shown.
+    pub const ALL: [Self; 4] = [Self::Default, Self::Label, Self::Url, Self::Tags];
 
     /// A short name for the status line.
     #[must_use]
@@ -35,6 +32,7 @@ impl SortOrder {
             Self::Default => "default",
             Self::Label => "label",
             Self::Url => "url",
+            Self::Tags => "tags",
         }
     }
 }
@@ -46,6 +44,8 @@ pub struct SortKeys {
     pub name: String,
     /// URL to sort by in URL order.
     pub url: String,
+    /// Tags to sort by in tags order.
+    pub tags: String,
     /// Rows sort within their group; lower groups come first.
     pub group: u8,
 }
@@ -56,6 +56,8 @@ pub struct List {
     labels: Vec<String>,
     keys: Vec<SortKeys>,
     sort: SortOrder,
+    reversed: bool,
+    columns: Vec<SortOrder>,
     filter: String,
     cursor: usize,
 }
@@ -69,6 +71,7 @@ impl List {
             .map(|label| SortKeys {
                 name: label.clone(),
                 url: label.clone(),
+                tags: String::new(),
                 group: 0,
             })
             .collect();
@@ -86,19 +89,59 @@ impl List {
         }
     }
 
+    /// Limit the sort columns to these, in this order. By default every
+    /// column is available.
+    #[must_use]
+    pub fn with_cycle(mut self, columns: Vec<SortOrder>) -> Self {
+        self.columns = columns;
+        self
+    }
+
+    /// The sort columns this list offers, in the order they are shown.
+    #[must_use]
+    pub fn columns(&self) -> &[SortOrder] {
+        if self.columns.is_empty() {
+            &SortOrder::ALL
+        } else {
+            &self.columns
+        }
+    }
+
     /// The current sort order.
     #[must_use]
     pub fn sort_order(&self) -> SortOrder {
         self.sort
     }
 
-    /// Move to the next sort order. The cursor stays on the same row.
-    pub fn cycle_sort(&mut self) {
-        let selected = self.selected();
-        self.sort = self.sort.next();
+    /// Whether the order is flipped.
+    #[must_use]
+    pub fn reversed(&self) -> bool {
+        self.reversed
+    }
+
+    /// Keep the cursor on the row it was on after the order changed.
+    fn follow(&mut self, selected: Option<usize>) {
         self.cursor = selected
             .and_then(|row| self.visible().iter().position(|&i| i == row))
             .unwrap_or(0);
+    }
+
+    /// Move the sort `delta` columns along, stopping at either end. The
+    /// cursor stays on the same row.
+    pub fn shift_sort(&mut self, delta: isize) {
+        let selected = self.selected();
+        let columns = self.columns();
+        let at = columns.iter().position(|&c| c == self.sort).unwrap_or(0);
+        let to = at.saturating_add_signed(delta).min(columns.len() - 1);
+        self.sort = columns[to];
+        self.follow(selected);
+    }
+
+    /// Flip the order inside each group. The cursor stays on the same row.
+    pub fn toggle_reverse(&mut self) {
+        let selected = self.selected();
+        self.reversed = !self.reversed;
+        self.follow(selected);
     }
 
     /// The current filter text.
@@ -114,18 +157,25 @@ impl List {
         let mut rows: Vec<usize> = (0..self.labels.len())
             .filter(|&i| matches(&self.labels[i], &self.filter))
             .collect();
+        let reversed = self.reversed;
+        let keys = &self.keys;
+        let by_key = |a: usize, b: usize, key: fn(&SortKeys) -> &str| {
+            let order = natural_cmp(key(&keys[a]), key(&keys[b]))
+                .then_with(|| natural_cmp(&keys[a].name, &keys[b].name))
+                .then_with(|| a.cmp(&b));
+            keys[a]
+                .group
+                .cmp(&keys[b].group)
+                .then(if reversed { order.reverse() } else { order })
+        };
         match self.sort {
+            SortOrder::Default if reversed => {
+                rows.sort_by_key(|&i| (keys[i].group, Reverse(i)));
+            }
             SortOrder::Default => {}
-            SortOrder::Label => rows
-                .sort_by_cached_key(|&i| (self.keys[i].group, self.keys[i].name.to_lowercase(), i)),
-            SortOrder::Url => rows.sort_by_cached_key(|&i| {
-                (
-                    self.keys[i].group,
-                    self.keys[i].url.to_lowercase(),
-                    self.keys[i].name.to_lowercase(),
-                    i,
-                )
-            }),
+            SortOrder::Label => rows.sort_by(|&a, &b| by_key(a, b, |k| &k.name)),
+            SortOrder::Url => rows.sort_by(|&a, &b| by_key(a, b, |k| &k.url)),
+            SortOrder::Tags => rows.sort_by(|&a, &b| by_key(a, b, |k| &k.tags)),
         }
         rows
     }
@@ -240,6 +290,50 @@ impl List {
     }
 }
 
+/// Compare strings the way people read them: case-insensitively, with runs
+/// of digits compared as numbers, so `v6.9` sorts before `v6.10`.
+#[must_use]
+pub fn natural_cmp(a: &str, b: &str) -> Ordering {
+    let mut a = a.chars().peekable();
+    let mut b = b.chars().peekable();
+    loop {
+        match (a.peek().copied(), b.peek().copied()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(x), Some(y)) if x.is_ascii_digit() && y.is_ascii_digit() => {
+                let na = take_number(&mut a);
+                let nb = take_number(&mut b);
+                let (na, nb) = (na.trim_start_matches('0'), nb.trim_start_matches('0'));
+                let order = na.len().cmp(&nb.len()).then_with(|| na.cmp(nb));
+                if order != Ordering::Equal {
+                    return order;
+                }
+            }
+            (Some(x), Some(y)) => {
+                let order = x.to_ascii_lowercase().cmp(&y.to_ascii_lowercase());
+                if order != Ordering::Equal {
+                    return order;
+                }
+                a.next();
+                b.next();
+            }
+        }
+    }
+}
+
+fn take_number(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
+    let mut digits = String::new();
+    while let Some(&c) = chars.peek() {
+        if !c.is_ascii_digit() {
+            break;
+        }
+        digits.push(c);
+        chars.next();
+    }
+    digits
+}
+
 /// Case-insensitive substring match. Regex support will slot in here.
 fn matches(label: &str, filter: &str) -> bool {
     filter.is_empty() || label.to_lowercase().contains(&filter.to_lowercase())
@@ -288,6 +382,7 @@ mod tests {
         let key = |name: &str, url: &str, group: u8| SortKeys {
             name: name.into(),
             url: url.into(),
+            tags: String::new(),
             group,
         };
         List::with_keys(
@@ -309,7 +404,7 @@ mod tests {
     #[test]
     fn label_order_sorts_each_group_case_insensitively() {
         let mut l = keyed();
-        l.cycle_sort();
+        l.shift_sort(1);
         assert_eq!(l.sort_order(), SortOrder::Label);
         assert_eq!(l.visible(), [0, 2, 3, 1]);
     }
@@ -317,20 +412,58 @@ mod tests {
     #[test]
     fn url_order_sorts_each_group_by_url() {
         let mut l = keyed();
-        l.cycle_sort();
-        l.cycle_sort();
+        l.shift_sort(1);
+        l.shift_sort(1);
         assert_eq!(l.sort_order(), SortOrder::Url);
         assert_eq!(l.visible(), [0, 1, 3, 2]);
     }
 
     #[test]
-    fn a_third_press_restores_the_original_order() {
+    fn moving_back_to_the_first_column_restores_the_original_order() {
         let mut l = keyed();
-        for _ in 0..3 {
-            l.cycle_sort();
-        }
+        l.shift_sort(1);
+        l.shift_sort(1);
+        l.shift_sort(-1);
+        l.shift_sort(-1);
         assert_eq!(l.sort_order(), SortOrder::Default);
         assert_eq!(l.visible(), [0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn shifting_stops_at_the_first_and_last_column() {
+        let mut l = keyed();
+        l.shift_sort(-1);
+        assert_eq!(l.sort_order(), SortOrder::Default);
+        l.shift_sort(10);
+        assert_eq!(l.sort_order(), SortOrder::Tags);
+        l.shift_sort(1);
+        assert_eq!(l.sort_order(), SortOrder::Tags);
+        assert_eq!(
+            l.columns(),
+            [
+                SortOrder::Default,
+                SortOrder::Label,
+                SortOrder::Url,
+                SortOrder::Tags
+            ]
+        );
+    }
+
+    #[test]
+    fn tags_order_sorts_by_the_tag_text() {
+        let key = |tags: &str| SortKeys {
+            name: "n".into(),
+            url: "u".into(),
+            tags: tags.into(),
+            group: 0,
+        };
+        let mut l = List::with_keys(
+            vec!["a".into(), "b".into(), "c".into()],
+            vec![key("merge"), key("maintainers"), key("manual")],
+        );
+        l.shift_sort(3);
+        assert_eq!(l.sort_order(), SortOrder::Tags);
+        assert_eq!(l.visible(), [1, 2, 0]);
     }
 
     #[test]
@@ -338,7 +471,7 @@ mod tests {
         let mut l = keyed();
         l.down();
         assert_eq!(l.selected(), Some(1));
-        l.cycle_sort();
+        l.shift_sort(1);
         assert_eq!(l.selected(), Some(1));
         assert_eq!(l.cursor(), 3);
     }
@@ -347,14 +480,14 @@ mod tests {
     fn sort_and_filter_compose() {
         let mut l = keyed();
         l.push('a');
-        l.cycle_sort();
+        l.shift_sort(1);
         assert_eq!(l.visible(), [2, 1]);
     }
 
     #[test]
     fn a_plain_list_sorts_by_its_text() {
         let mut l = List::new(vec!["b".into(), "a".into()]);
-        l.cycle_sort();
+        l.shift_sort(1);
         assert_eq!(l.visible(), [1, 0]);
     }
 
@@ -409,6 +542,70 @@ mod tests {
         assert!(l.motion(Action::Top, None, 20));
         assert_eq!(l.cursor(), 0);
         assert!(!l.motion(Action::Search, None, 20));
+    }
+
+    #[test]
+    fn natural_order_compares_numbers_as_numbers_and_ignores_case() {
+        use std::cmp::Ordering::{Equal, Greater, Less};
+        assert_eq!(natural_cmp("v6.9", "v6.10"), Less);
+        assert_eq!(natural_cmp("v6.10", "v6.9"), Greater);
+        assert_eq!(natural_cmp("V6.9", "v6.9"), Equal);
+        assert_eq!(natural_cmp("a01", "a1"), Equal);
+        assert_eq!(natural_cmp("rc2", "rc10"), Less);
+        assert_eq!(natural_cmp("a", "ab"), Less);
+        assert_eq!(natural_cmp("abc", "abd"), Less);
+    }
+
+    #[test]
+    fn reversing_flips_rows_inside_each_group_only() {
+        let mut l = keyed();
+        l.shift_sort(1);
+        assert_eq!(l.visible(), [0, 2, 3, 1]);
+        l.toggle_reverse();
+        assert!(l.reversed());
+        assert_eq!(l.visible(), [0, 1, 3, 2]);
+        l.toggle_reverse();
+        assert_eq!(l.visible(), [0, 2, 3, 1]);
+    }
+
+    #[test]
+    fn the_default_order_can_be_reversed_too() {
+        let mut l = keyed();
+        l.toggle_reverse();
+        assert_eq!(l.sort_order(), SortOrder::Default);
+        assert_eq!(l.visible(), [0, 3, 2, 1]);
+    }
+
+    #[test]
+    fn the_cursor_stays_on_the_same_row_after_a_reverse() {
+        let mut l = keyed();
+        l.down();
+        assert_eq!(l.selected(), Some(1));
+        l.toggle_reverse();
+        assert_eq!(l.selected(), Some(1));
+        assert_eq!(l.cursor(), 3);
+    }
+
+    #[test]
+    fn a_custom_set_of_columns_limits_where_shifting_goes() {
+        let mut l = List::new(vec![
+            "refs/tags/v6.10".into(),
+            "refs/tags/v6.9".into(),
+            "refs/heads/main".into(),
+            "HEAD".into(),
+        ])
+        .with_cycle(vec![SortOrder::Default, SortOrder::Label]);
+        assert_eq!(l.visible(), [0, 1, 2, 3]);
+        l.shift_sort(1);
+        assert_eq!(l.sort_order(), SortOrder::Label);
+        assert_eq!(l.visible(), [3, 2, 1, 0]);
+        l.toggle_reverse();
+        assert_eq!(l.visible(), [0, 1, 2, 3]);
+        l.shift_sort(1);
+        assert_eq!(l.sort_order(), SortOrder::Label);
+        l.shift_sort(-1);
+        assert_eq!(l.sort_order(), SortOrder::Default);
+        assert_eq!(l.visible(), [3, 2, 1, 0]);
     }
 
     #[test]
