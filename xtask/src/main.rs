@@ -60,6 +60,15 @@ enum Task {
         #[arg(long)]
         fix: bool,
     },
+    /// Regenerate CHANGELOG.md with git-cliff (or verify it with --check).
+    Changelog {
+        /// Fail if CHANGELOG.md is out of date instead of writing it.
+        #[arg(long)]
+        check: bool,
+        /// Label unreleased commits as this version, e.g. v0.2.0.
+        #[arg(long)]
+        tag: Option<String>,
+    },
     /// Generate man page and shell completions under target/.
     Dist,
     /// Everything required before cutting a release.
@@ -124,6 +133,7 @@ fn run(task: Task) -> Result<()> {
             cargo(&args)
         }
         Task::Headers { fix } => headers::run(fix),
+        Task::Changelog { check, tag } => changelog(check, tag.as_deref()),
         Task::Dist => dist(),
         Task::PrepRelease => {
             run(Task::Ci)?;
@@ -131,6 +141,32 @@ fn run(task: Task) -> Result<()> {
             cargo(&["publish", "--dry-run", "--package", "git-fetchview"])
         }
     }
+}
+
+fn changelog(check: bool, tag: Option<&str>) -> Result<()> {
+    let mut cmd = Command::new("git-cliff");
+    cmd.args(["--config", "cliff.toml"]);
+    if let Some(tag) = tag {
+        cmd.args(["--tag", tag]);
+    }
+    if check {
+        let out = cmd
+            .output()
+            .context("failed to run git-cliff (cargo install git-cliff)")?;
+        if !out.status.success() {
+            bail!(
+                "git-cliff failed:\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        let have = std::fs::read("CHANGELOG.md").unwrap_or_default();
+        if out.stdout != have {
+            bail!("CHANGELOG.md is out of date (run `cargo xtask changelog`)");
+        }
+        return Ok(());
+    }
+    cmd.args(["--output", "CHANGELOG.md"]);
+    exec(cmd)
 }
 
 fn dist() -> Result<()> {

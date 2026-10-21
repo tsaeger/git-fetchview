@@ -62,10 +62,13 @@ cargo xtask test
 cargo xtask miri          # needs nightly + miri
 cargo xtask fuzz          # needs nightly + cargo-fuzz
 cargo xtask dist          # man page + completions under target/
+cargo xtask changelog     # regenerate CHANGELOG.md (needs git-cliff)
 cargo xtask prep-release
 ```
 
 `deny` and `audit` need `cargo install cargo-deny cargo-audit`.
+`changelog` needs `cargo install git-cliff`; `--check` fails if the file is stale,
+and `--tag v1.2.3` labels the unreleased commits for a release.
 
 Targets: Linux and macOS.
 
