@@ -23,36 +23,33 @@ Sleep 3s
 Enter
 Sleep 2500ms
 
-# 2. Pick a remote, then a ref.
+# 2. Pick a remote. The refs list leaves out the tags mainline and stable
+# already have. The first open fetches those lists, so the wait is cut from the
+# recording and the list appears once it is ready.
 Type "clear"
 Enter
-Type "# Now pick one, fetch it and browse it:"
+Type "# Now pick one. Tags mainline and stable already have are hidden:"
 Enter
 Sleep 600ms
 Type "git fetchview"
 Enter
 Sleep 2000ms
-Type "/net-next"
+Type "i"
+Type "net-next"
 Sleep 600ms
-Enter
+Escape
 Sleep 1000ms
+Hide
 Type "l"
-Sleep 2500ms
+Wait+Screen@120s /hidden/
+Show
+Sleep 3s
 
-# 3. Sort the refs naturally, newest first, then pick main.
-Type "s"
+# 3. Pick main.
+Type "j"
 Sleep 700ms
-Type "l"
-Sleep 900ms
-Type "r"
-Sleep 2200ms
-Type "s"
-Sleep 500ms
-Type "/main"
-Sleep 500ms
 Enter
-Sleep 1200ms
-Enter
+Sleep 800ms
 
 # 4. Browse FETCH_HEAD in tig. Wait for it instead of guessing how long the
 # fetch takes, so no keys are typed early.
