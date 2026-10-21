@@ -20,9 +20,13 @@ use theme::{Theme, ThemeName};
 ///
 /// # Errors
 /// Terminal I/O failures.
-pub fn pick(remotes: Vec<Remote>, theme: ThemeName) -> Result<Option<Selection>> {
+pub fn pick(
+    remotes: Vec<Remote>,
+    theme: ThemeName,
+    notice: Option<String>,
+) -> Result<Option<Selection>> {
     let theme = Theme::from(theme);
-    let mut app = App::new(remotes);
+    let mut app = App::new(remotes).with_notice(notice);
     let mut terminal = ratatui::init();
     let result = run(&mut terminal, &mut app, &theme);
     ratatui::restore();

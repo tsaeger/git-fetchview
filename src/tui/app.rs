@@ -42,6 +42,14 @@ pub struct Selection {
 /// Fetches the refs of a remote (`git ls-remote`).
 pub type Loader<'a> = dyn FnMut(&Remote) -> Result<Vec<RemoteRef>> + 'a;
 
+fn remote_label(r: &Remote) -> String {
+    if r.tags.is_empty() {
+        format!("{}  {}", r.name, r.url)
+    } else {
+        format!("{}  {}  [{}]", r.name, r.url, r.tags.join(","))
+    }
+}
+
 /// Picker state.
 #[derive(Debug)]
 pub struct App {
@@ -52,6 +60,7 @@ pub struct App {
     level: Level,
     typing: bool,
     error: Option<String>,
+    notice: Option<String>,
     chosen: Option<usize>,
 }
 
@@ -59,10 +68,7 @@ impl App {
     /// Start at the remote picker.
     #[must_use]
     pub fn new(remotes: Vec<Remote>) -> Self {
-        let labels = remotes
-            .iter()
-            .map(|r| format!("{}  {}", r.name, r.url))
-            .collect();
+        let labels = remotes.iter().map(remote_label).collect();
         Self {
             remotes,
             remote_list: List::new(labels),
@@ -71,8 +77,22 @@ impl App {
             level: Level::Remotes,
             typing: false,
             error: None,
+            notice: None,
             chosen: None,
         }
+    }
+
+    /// Show a message in the status line until the next key press.
+    #[must_use]
+    pub fn with_notice(mut self, notice: Option<String>) -> Self {
+        self.notice = notice;
+        self
+    }
+
+    /// The pending notice, if any.
+    #[must_use]
+    pub fn notice(&self) -> Option<&str> {
+        self.notice.as_deref()
     }
 
     /// Current level.
@@ -118,6 +138,7 @@ impl App {
     /// Apply one action.
     pub fn update(&mut self, action: Action, load: &mut Loader<'_>) -> Flow {
         self.error = None;
+        self.notice = None;
         if action == Action::Quit {
             return Flow::Quit;
         }
@@ -209,12 +230,42 @@ mod tests {
             Remote {
                 name: "origin".into(),
                 url: "u1".into(),
+                tags: Vec::new(),
             },
             Remote {
                 name: "up".into(),
                 url: "u2".into(),
+                tags: Vec::new(),
             },
         ])
+    }
+
+    #[test]
+    fn rows_show_tags_only_for_collected_remotes() {
+        let a = App::new(vec![
+            Remote {
+                name: "origin".into(),
+                url: "u".into(),
+                tags: Vec::new(),
+            },
+            Remote {
+                name: "netdev/net".into(),
+                url: "v".into(),
+                tags: vec!["merge".into(), "maintainers".into()],
+            },
+        ]);
+        assert_eq!(
+            a.list().visible_labels(),
+            ["origin  u", "netdev/net  v  [merge,maintainers]"]
+        );
+    }
+
+    #[test]
+    fn the_notice_clears_on_the_first_action() {
+        let mut a = app().with_notice(Some("2 files missing".into()));
+        assert_eq!(a.notice(), Some("2 files missing"));
+        a.update(Action::Down, &mut refs);
+        assert_eq!(a.notice(), None);
     }
 
     fn refs(_: &Remote) -> Result<Vec<RemoteRef>> {

@@ -236,6 +236,8 @@ pub struct Remote {
     pub name: String,
     /// Fetch URL.
     pub url: String,
+    /// Where a collected remote came from; empty for real remotes.
+    pub tags: Vec<String>,
 }
 
 /// A ref advertised by a remote.
@@ -257,6 +259,7 @@ pub fn parse_remotes(text: &str) -> Vec<Remote> {
             Some(Remote {
                 name: name.to_owned(),
                 url: url.to_owned(),
+                tags: Vec::new(),
             })
         })
         .collect()
@@ -279,17 +282,12 @@ pub fn parse_ls_remote(text: &str) -> Vec<RemoteRef> {
         .collect()
 }
 
-/// List the repository's remotes.
+/// List the repository's configured remotes. May be empty.
 ///
 /// # Errors
-/// Command failures, or [`Error::NoRemotes`].
-pub fn remotes() -> Result<Vec<Remote>> {
-    let remotes = parse_remotes(&Cmd::list_remotes().output()?);
-    if remotes.is_empty() {
-        Err(Error::NoRemotes)
-    } else {
-        Ok(remotes)
-    }
+/// Git cannot be run, or this is not a repository.
+pub fn configured_remotes() -> Result<Vec<Remote>> {
+    Ok(parse_remotes(&Cmd::list_remotes().output()?))
 }
 
 /// List the refs a remote advertises. `remote` is a name or a URL.

@@ -58,6 +58,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme) {
             Span::raw(app.list().filter().to_owned()),
             Span::styled("█", Style::new().fg(theme.accent)),
         ])
+    } else if let Some(notice) = app.notice() {
+        Line::from(Span::styled(
+            notice.to_owned(),
+            Style::new().fg(theme.accent),
+        ))
     } else if app.list().filter().is_empty() {
         Line::from(Span::styled(HINTS, Style::new().fg(theme.dim)))
     } else {

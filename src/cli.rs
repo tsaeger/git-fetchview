@@ -10,8 +10,9 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 
 use crate::config::Config;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::git::{self, Cmd};
+use crate::remotes::{self, registry};
 use crate::tui::{self, theme::ThemeName};
 
 /// Pick a remote and ref, fetch it, and open it in tig.
@@ -70,10 +71,23 @@ fn run(cli: &Cli) -> Result<()> {
     }
 }
 
+/// One line for the status bar: the first warning and how many more there are.
+fn notice(warnings: &[String]) -> Option<String> {
+    match warnings {
+        [] => None,
+        [one] => Some(one.clone()),
+        [first, rest @ ..] => Some(format!("{first} (+{} more)", rest.len())),
+    }
+}
+
 fn pick_and_view(theme_flag: Option<ThemeName>) -> Result<()> {
     let config = Config::load(theme_flag)?;
-    let remotes = git::remotes()?;
-    let Some(selection) = tui::pick(remotes, config.theme)? else {
+    let loaded = registry::load(&registry::files()?);
+    let remotes = remotes::picker_remotes(git::configured_remotes()?, &loaded.merged());
+    if remotes.is_empty() {
+        return Err(Error::NoRemotes);
+    }
+    let Some(selection) = tui::pick(remotes, config.theme, notice(&loaded.warnings))? else {
         return Ok(());
     };
 
@@ -91,4 +105,19 @@ fn pick_and_view(theme_flag: Option<ThemeName>) -> Result<()> {
 
     fetch.status()?;
     tig.status()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::notice;
+
+    #[test]
+    fn notice_summarizes_warnings() {
+        assert_eq!(notice(&[]), None);
+        assert_eq!(notice(&["a".into()]), Some("a".into()));
+        assert_eq!(
+            notice(&["a".into(), "b".into(), "c".into()]),
+            Some("a (+2 more)".into())
+        );
+    }
 }
