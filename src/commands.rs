@@ -14,7 +14,7 @@ use crate::error::{Error, Result};
 use crate::git::Cmd;
 use crate::remotes::entry::{Entry, key, validate_url};
 use crate::remotes::file::{merge, remove as remove_lines, render_line, write_atomic};
-use crate::remotes::plan::plan;
+use crate::remotes::plan::{Plan, plan};
 use crate::remotes::registry::{self, Scope};
 use crate::remotes::source::maintainers::Maintainers;
 use crate::remotes::source::manual::{Manual, parse_url_list};
@@ -93,6 +93,21 @@ fn row(entry: &Entry, have: bool) -> Row {
     }
 }
 
+/// The rows the picker shows: new entries first, selectable, then every entry
+/// that is already collected (in this file or another), shown as `(have)`.
+fn picker_rows(plan: &Plan) -> Vec<Row> {
+    plan.new
+        .iter()
+        .map(|e| row(e, false))
+        .chain(
+            plan.tag_updates
+                .iter()
+                .chain(&plan.present)
+                .map(|e| row(e, true)),
+        )
+        .collect()
+}
+
 fn row_label(entry: &Entry) -> String {
     let tags = entry.tags.iter().cloned().collect::<Vec<_>>().join(",");
     format!("{}  {}  [{tags}]", entry.display_label(), entry.url)
@@ -132,13 +147,7 @@ pub fn add(args: &AddArgs) -> Result<()> {
         if !(io::stdin().is_terminal() && io::stdout().is_terminal()) {
             return Err(Error::NotATerminal);
         }
-        let rows: Vec<Row> = plan
-            .new
-            .iter()
-            .map(|e| row(e, false))
-            .chain(plan.present.iter().map(|e| row(e, true)))
-            .collect();
-        match tui::select_many(rows, theme)? {
+        match tui::select_many(picker_rows(&plan), theme)? {
             None => return Ok(()),
             Some(picked) => picked
                 .into_iter()
@@ -245,4 +254,30 @@ pub fn remove(target: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(url: &str) -> Entry {
+        Entry::new(url, "maintainers")
+    }
+
+    #[test]
+    fn rows_list_new_entries_first_then_everything_already_collected() {
+        let plan = Plan {
+            new: vec![entry("https://h/p/new")],
+            tag_updates: vec![entry("https://h/p/mine")],
+            present: vec![entry("https://h/p/other")],
+        };
+        let rows = picker_rows(&plan);
+        assert_eq!(
+            rows.iter().map(|r| r.have).collect::<Vec<_>>(),
+            [false, true, true]
+        );
+        assert!(rows[0].label.starts_with("p/new"));
+        assert!(rows[1].label.starts_with("p/mine"));
+        assert!(rows[2].label.starts_with("p/other"));
+    }
 }
