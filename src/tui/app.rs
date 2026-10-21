@@ -39,8 +39,28 @@ pub struct Selection {
     pub refname: String,
 }
 
+/// The refs of a remote to list, after hiding the ones other trees carry.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Loaded {
+    /// Refs to show.
+    pub refs: Vec<RemoteRef>,
+    /// How many refs were left out.
+    pub hidden: usize,
+    /// A problem worth a line in the status bar, such as a stale cache.
+    pub note: Option<String>,
+}
+
+impl From<Vec<RemoteRef>> for Loaded {
+    fn from(refs: Vec<RemoteRef>) -> Self {
+        Self {
+            refs,
+            ..Self::default()
+        }
+    }
+}
+
 /// Fetches the refs of a remote (`git ls-remote`).
-pub type Loader<'a> = dyn FnMut(&Remote) -> Result<Vec<RemoteRef>> + 'a;
+pub type Loader<'a> = dyn FnMut(&Remote) -> Result<Loaded> + 'a;
 
 fn remote_cells(r: &Remote) -> Vec<String> {
     vec![r.name.clone(), r.url.clone(), r.tags.join(",")]
@@ -52,6 +72,7 @@ pub struct App {
     remotes: Vec<Remote>,
     remote_list: List,
     refs: Vec<RemoteRef>,
+    hidden: usize,
     ref_list: List,
     level: Level,
     typing: bool,
@@ -81,6 +102,7 @@ impl App {
             remotes,
             remote_list: List::with_cells(cells, keys),
             refs: Vec::new(),
+            hidden: 0,
             ref_list: List::default(),
             level: Level::Remotes,
             typing: false,
@@ -103,6 +125,12 @@ impl App {
     #[must_use]
     pub fn notice(&self) -> Option<&str> {
         self.notice.as_deref()
+    }
+
+    /// How many refs of the open remote are hidden.
+    #[must_use]
+    pub fn hidden(&self) -> usize {
+        self.hidden
     }
 
     /// Current level.
@@ -261,11 +289,11 @@ impl App {
         match self.level {
             Level::Remotes => {
                 match load(&self.remotes[index]) {
-                    Ok(refs) if refs.is_empty() => {
+                    Ok(loaded) if loaded.refs.is_empty() && loaded.hidden == 0 => {
                         self.error =
                             Some(Error::NoRefs(self.remotes[index].name.clone()).to_string());
                     }
-                    Ok(refs) => {
+                    Ok(Loaded { refs, hidden, note }) => {
                         let cells = refs
                             .iter()
                             .map(|r| {
@@ -284,6 +312,10 @@ impl App {
                         self.ref_list = List::with_cells(cells, keys)
                             .with_cycle(vec![SortOrder::Default, SortOrder::Label]);
                         self.refs = refs;
+                        self.hidden = hidden;
+                        if note.is_some() {
+                            self.notice = note;
+                        }
                         self.chosen = Some(index);
                         self.level = Level::Refs;
                     }
@@ -484,7 +516,7 @@ mod tests {
         assert_eq!(a.notice(), None);
     }
 
-    fn refs(_: &Remote) -> Result<Vec<RemoteRef>> {
+    fn refs(_: &Remote) -> Result<Loaded> {
         Ok(vec![
             RemoteRef {
                 name: "refs/heads/main".into(),
@@ -494,7 +526,8 @@ mod tests {
                 name: "refs/heads/dev".into(),
                 oid: "1234567890".into(),
             },
-        ])
+        ]
+        .into())
     }
 
     #[test]
@@ -563,6 +596,40 @@ mod tests {
         assert!(!a.typing());
         assert_eq!(a.list().filter(), "");
         assert_eq!(a.level(), Level::Refs);
+    }
+
+    #[test]
+    fn hidden_refs_are_counted_and_the_load_note_shows() {
+        let mut a = app();
+        let mut load = |_: &Remote| {
+            Ok(Loaded {
+                refs: vec![RemoteRef {
+                    name: "refs/heads/dev".into(),
+                    oid: "1234567890".into(),
+                }],
+                hidden: 3,
+                note: Some("stale".into()),
+            })
+        };
+        a.update(Action::Enter, &mut load);
+        assert_eq!(a.level(), Level::Refs);
+        assert_eq!(a.hidden(), 3);
+        assert_eq!(a.notice(), Some("stale"));
+    }
+
+    #[test]
+    fn a_remote_whose_refs_are_all_hidden_still_opens() {
+        let mut a = app();
+        let mut load = |_: &Remote| {
+            Ok(Loaded {
+                refs: Vec::new(),
+                hidden: 5,
+                note: None,
+            })
+        };
+        a.update(Action::Enter, &mut load);
+        assert_eq!(a.level(), Level::Refs);
+        assert!(a.error().is_none());
     }
 
     #[test]

@@ -128,6 +128,31 @@ take no revision, so they cannot be used directly.
 
 To use `git fv`, install both binaries (`git-fetchview` and `git-fv`).
 
+### Hiding refs other trees carry
+
+Most tags in a kernel tree are ones mainline and stable already have, and you
+would fetch those from mainline or stable. `fetchview.hideRefsFrom` lists
+repositories whose refs are left out of the refs list. Each value is a URL
+followed by any number of ref patterns:
+
+```
+git config --add fetchview.hideRefsFrom 'git://git.example.org/base.git refs/tags/* refs/heads/master'
+```
+
+With nothing set, the refs of mainline and stable are hidden:
+`git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git` and
+`.../stable/linux.git`, both with `refs/tags/*`. Setting the key at any level
+replaces that default, and a single empty value turns hiding off.
+
+A ref is hidden only if the listed repository has the same name at the same
+commit, so a tag that reuses a name for different work still shows. Opening one
+of the listed repositories shows all of its refs. The status line says how many
+were hidden.
+
+The lists are cached in `.git/fetchview/hidden` and fetched again once they are a
+day old. If a refresh fails, the old copy is used and the status line says so.
+`git fetchview --refresh` fetches them now.
+
 ## Development
 
 Everything goes through `cargo xtask`:

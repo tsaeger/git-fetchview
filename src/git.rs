@@ -42,6 +42,14 @@ impl Cmd {
         Self::new("git", ["ls-remote", remote])
     }
 
+    /// `git ls-remote <remote> <pattern>...`
+    #[must_use]
+    pub fn ls_remote_patterns(remote: &str, patterns: &[String]) -> Self {
+        let mut args = vec!["ls-remote".to_owned(), remote.to_owned()];
+        args.extend(patterns.iter().cloned());
+        Self::new("git", args)
+    }
+
     /// `git fetch <remote> <ref>`
     #[must_use]
     pub fn fetch(remote: &str, refname: &str) -> Self {
@@ -52,6 +60,12 @@ impl Cmd {
     #[must_use]
     pub fn config_get(key: &str) -> Self {
         Self::new("git", ["config", "--get", key])
+    }
+
+    /// `git config --get-all <key>`
+    #[must_use]
+    pub fn config_get_all(key: &str) -> Self {
+        Self::new("git", ["config", "--get-all", key])
     }
 
     /// `git config --type=path --show-origin --get-all <key>`

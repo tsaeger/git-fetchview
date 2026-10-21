@@ -11,6 +11,7 @@ pub mod commands;
 pub mod config;
 pub mod error;
 pub mod git;
+pub mod hide;
 pub mod remotes;
 pub mod tui;
 pub mod viewer;

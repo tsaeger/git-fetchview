@@ -14,10 +14,20 @@ use ratatui::crossterm::event::{self, Event};
 
 use crate::error::Result;
 use crate::git::{self, Remote};
-use app::{App, Flow, Selection};
+use crate::hide::{Hidden, Rule};
+use app::{App, Flow, Loaded, Selection};
 use keys::KeyParser;
 use select::{Row, Select, SelectFlow};
 use theme::{Theme, ThemeName};
+
+/// Which refs to leave out of the refs list.
+#[derive(Debug, Clone, Default)]
+pub struct HideRefs {
+    /// Repositories whose refs are hidden.
+    pub rules: Vec<Rule>,
+    /// Refetch their lists even if the cache is recent.
+    pub refresh: bool,
+}
 
 /// Run the picker. Returns `None` if the user quit.
 ///
@@ -27,11 +37,12 @@ pub fn pick(
     remotes: Vec<Remote>,
     theme: ThemeName,
     notice: Option<String>,
+    hide: &HideRefs,
 ) -> Result<Option<Selection>> {
     let theme = Theme::from(theme);
     let mut app = App::new(remotes).with_notice(notice);
     let mut terminal = ratatui::init();
-    let result = run(&mut terminal, &mut app, &theme);
+    let result = run(&mut terminal, &mut app, &theme, hide);
     ratatui::restore();
     result
 }
@@ -46,8 +57,20 @@ fn run(
     terminal: &mut ratatui::DefaultTerminal,
     app: &mut App,
     theme: &Theme,
+    hide: &HideRefs,
 ) -> Result<Option<Selection>> {
-    let mut load = |remote: &Remote| git::remote_refs(&remote.url);
+    // Loaded on the first refs list, then kept for the rest of the session.
+    let mut hidden: Option<Hidden> = None;
+    let mut load = |remote: &Remote| {
+        let refs = git::remote_refs(&remote.url)?;
+        let hidden = hidden.get_or_insert_with(|| Hidden::load_real(&hide.rules, hide.refresh));
+        let (refs, count) = hidden.apply(&remote.url, refs);
+        Ok(Loaded {
+            refs,
+            hidden: count,
+            note: hidden.note.take(),
+        })
+    };
     let mut parser = KeyParser::default();
     loop {
         app.set_viewport(list_rows(terminal)?);

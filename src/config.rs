@@ -14,6 +14,7 @@
 
 use crate::error::{Error, Result};
 use crate::git::Cmd;
+use crate::hide::{self, Rule};
 use crate::tui::theme::ThemeName;
 use crate::viewer;
 
@@ -30,6 +31,8 @@ pub struct Config {
     pub theme: ThemeName,
     /// The shell command line that browses `FETCH_HEAD`.
     pub viewer: String,
+    /// Repositories whose refs the refs picker leaves out.
+    pub hide: Vec<Rule>,
 }
 
 impl Config {
@@ -65,7 +68,29 @@ impl Config {
                     },
                 },
             )?;
-        Ok(Self { theme, viewer })
+        let hide_values = get_all(hide::KEY)?;
+        let hide = hide::parse_rules(hide_values.as_deref()).map_err(|(value, reason)| {
+            Error::BadConfig {
+                key: hide::KEY,
+                value,
+                reason,
+            }
+        })?;
+        Ok(Self {
+            theme,
+            viewer,
+            hide,
+        })
+    }
+}
+
+/// Read every value of a multi-valued key, one per line; unset is `None`. A
+/// key set to an empty string gives `Some` of a blank line.
+fn get_all(key: &str) -> Result<Option<String>> {
+    match Cmd::config_get_all(key).output() {
+        Ok(values) => Ok(Some(values)),
+        Err(Error::Failed { status, .. }) if status.code() == Some(1) => Ok(None),
+        Err(e) => Err(e),
     }
 }
 

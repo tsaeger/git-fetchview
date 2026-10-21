@@ -33,6 +33,11 @@ pub struct Cli {
     #[arg(long)]
     pub viewer: Option<String>,
 
+    /// Refetch the lists of refs to hide, even if the cache is recent
+    /// (see `fetchview.hideRefsFrom`).
+    #[arg(long)]
+    pub refresh: bool,
+
     /// Subcommand; omit to start the picker.
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -136,7 +141,7 @@ fn run(cli: &Cli) -> Result<()> {
         Some(Command::Add(args)) => commands::add(args),
         Some(Command::List) => commands::list(),
         Some(Command::Remove { target }) => commands::remove(target),
-        None => pick_and_view(cli.theme, cli.viewer.as_deref()),
+        None => pick_and_view(cli.theme, cli.viewer.as_deref(), cli.refresh),
     }
 }
 
@@ -149,14 +154,22 @@ fn notice(warnings: &[String]) -> Option<String> {
     }
 }
 
-fn pick_and_view(theme_flag: Option<ThemeName>, viewer_flag: Option<&str>) -> Result<()> {
+fn pick_and_view(
+    theme_flag: Option<ThemeName>,
+    viewer_flag: Option<&str>,
+    refresh: bool,
+) -> Result<()> {
     let config = Config::load(theme_flag, viewer_flag)?;
     let loaded = registry::load_registered();
     let remotes = remotes::picker_remotes(git::configured_remotes()?, &loaded.merged());
     if remotes.is_empty() {
         return Err(Error::NoRemotes);
     }
-    let Some(selection) = tui::pick(remotes, config.theme, notice(&loaded.warnings))? else {
+    let hide = tui::HideRefs {
+        rules: config.hide,
+        refresh,
+    };
+    let Some(selection) = tui::pick(remotes, config.theme, notice(&loaded.warnings), &hide)? else {
         return Ok(());
     };
 

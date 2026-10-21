@@ -244,6 +244,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
             app.list().reversed(),
             theme,
         ));
+        if app.level() == Level::Refs && app.hidden() > 0 {
+            spans.push(Span::styled(
+                format!("{} hidden  ", app.hidden()),
+                Style::new().fg(theme.accent),
+            ));
+        }
         if app.list().filter().is_empty() {
             spans.push(Span::styled(HINTS, Style::new().fg(theme.dim)));
         } else {
@@ -322,7 +328,8 @@ mod tests {
     use ratatui::backend::TestBackend;
 
     use super::*;
-    use crate::git::Remote;
+    use crate::git::{Remote, RemoteRef};
+    use crate::tui::app::Loaded;
     use crate::tui::keys::Action;
     use crate::tui::theme::ThemeName;
 
@@ -413,7 +420,7 @@ mod tests {
     #[test]
     fn the_header_marks_the_sorted_column_and_direction() {
         let mut app = App::new(vec![remote("a", "https://h/a", &[])]);
-        let mut no_refs = |_: &Remote| Ok(Vec::new());
+        let mut no_refs = |_: &Remote| Ok(Loaded::default());
         for action in [
             Action::Sort,
             Action::ColumnNext,
@@ -437,5 +444,24 @@ mod tests {
         let theme = Theme::from(ThemeName::default());
         let lines = screen(40, 6, |f| draw(f, &app, &theme, ""));
         assert_eq!(lines.iter().filter(|l| l.contains('x')).count(), 1);
+    }
+
+    #[test]
+    fn the_status_line_counts_hidden_refs() {
+        let mut app = App::new(vec![remote("a", "https://h/a", &[])]);
+        let mut load = |_: &Remote| {
+            Ok(Loaded {
+                refs: vec![RemoteRef {
+                    name: "refs/heads/dev".into(),
+                    oid: "1234567890".into(),
+                }],
+                hidden: 412,
+                note: None,
+            })
+        };
+        app.update(Action::Enter, &mut load);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(90, 6, |f| draw(f, &app, &theme, ""));
+        assert!(lines.last().unwrap().contains("412 hidden"), "{lines:?}");
     }
 }
