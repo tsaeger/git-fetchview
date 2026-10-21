@@ -34,6 +34,11 @@ All notable changes to this project are documented here. The format follows
 - Add design spec for remote sources (4d28ad9)
 - Add implementation plan for remote sources (78da3d9)
 - Describe collecting remotes (8ba41af)
+- Regenerate changelog (59a3ef8)
+
+### Fixed
+
+- Harden remote sources after review (90e7e09)
 
 ### Miscellaneous
 
