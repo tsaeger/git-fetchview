@@ -17,16 +17,21 @@ use crate::git::{self, Cmd};
 use crate::remotes::{self, registry};
 use crate::tui::{self, theme::ThemeName};
 
-/// Pick a remote and ref, fetch it, and open it in tig.
+/// Pick a remote and ref, fetch it, and open it in a viewer (tig by default).
 ///
 /// Settings come from `git config` (system, global, then local):
-/// `fetchview.theme`. Flags override config.
+/// `fetchview.theme`, `fetchview.viewer`. Flags override config.
 #[derive(Debug, Parser)]
 #[command(name = "git-fetchview", version, about)]
 pub struct Cli {
     /// Colour theme (overrides `fetchview.theme`).
     #[arg(long, value_enum)]
     pub theme: Option<ThemeName>,
+
+    /// Viewer for `FETCH_HEAD`: tig, gitk, git-log, fzf, fugitive, or a command
+    /// in which `{}` stands for `FETCH_HEAD` (overrides `fetchview.viewer`).
+    #[arg(long)]
+    pub viewer: Option<String>,
 
     /// Subcommand; omit to start the picker.
     #[command(subcommand)]
@@ -131,7 +136,7 @@ fn run(cli: &Cli) -> Result<()> {
         Some(Command::Add(args)) => commands::add(args),
         Some(Command::List) => commands::list(),
         Some(Command::Remove { target }) => commands::remove(target),
-        None => pick_and_view(cli.theme),
+        None => pick_and_view(cli.theme, cli.viewer.as_deref()),
     }
 }
 
@@ -144,8 +149,8 @@ fn notice(warnings: &[String]) -> Option<String> {
     }
 }
 
-fn pick_and_view(theme_flag: Option<ThemeName>) -> Result<()> {
-    let config = Config::load(theme_flag)?;
+fn pick_and_view(theme_flag: Option<ThemeName>, viewer_flag: Option<&str>) -> Result<()> {
+    let config = Config::load(theme_flag, viewer_flag)?;
     let loaded = registry::load_registered();
     let remotes = remotes::picker_remotes(git::configured_remotes()?, &loaded.merged());
     if remotes.is_empty() {
@@ -158,17 +163,17 @@ fn pick_and_view(theme_flag: Option<ThemeName>) -> Result<()> {
     // Use the expanded URL rather than the remote name, so the trail works
     // for anyone, not only in a clone that happens to have this remote.
     let fetch = Cmd::fetch(&selection.url, &selection.refname);
-    let tig = Cmd::tig_fetch_head();
+    let viewer = Cmd::shell(&config.viewer);
 
     // The trail: paste these to do the same thing without git-fetchview.
     // It is shared with others, so embedded passwords are removed.
     let shared_url = git::redact_url(&selection.url);
     eprintln!("{}", Cmd::ls_remote(&shared_url));
     eprintln!("{}", Cmd::fetch(&shared_url, &selection.refname));
-    eprintln!("{tig}");
+    eprintln!("{viewer}");
 
     fetch.status()?;
-    tig.status()
+    viewer.run_viewer()
 }
 
 #[cfg(test)]

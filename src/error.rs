@@ -38,6 +38,16 @@ pub enum Error {
         command: String,
     },
 
+    /// The viewer command could not be found (exit status 127).
+    #[error(
+        "viewer not found: `{command}` (set fetchview.viewer to a command, or one of: {})",
+        crate::viewer::preset_names()
+    )]
+    ViewerNotFound {
+        /// The command line that was run.
+        command: String,
+    },
+
     /// The repository has no remotes.
     #[error("this repository has no remotes")]
     NoRemotes,
@@ -45,6 +55,17 @@ pub enum Error {
     /// The chosen remote advertises no refs.
     #[error("remote `{0}` has no refs")]
     NoRefs(String),
+
+    /// A command-line flag value could not be understood.
+    #[error("invalid value for {flag}: `{value}`: {reason}")]
+    BadFlag {
+        /// The flag, e.g. `--viewer`.
+        flag: &'static str,
+        /// The offending value.
+        value: String,
+        /// Why it was rejected.
+        reason: String,
+    },
 
     /// A `git config` value could not be understood.
     #[error("invalid git config `{key}` = `{value}`: {reason}")]

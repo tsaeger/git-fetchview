@@ -6,6 +6,7 @@
 //!
 //! ```text
 //! git config --global fetchview.theme kanagawa
+//! git config --global fetchview.viewer gitk        # or a command; {} is FETCH_HEAD
 //! git config fetchview.theme gruvbox        # this repository only
 //! ```
 //!
@@ -14,23 +15,29 @@
 use crate::error::{Error, Result};
 use crate::git::Cmd;
 use crate::tui::theme::ThemeName;
+use crate::viewer;
 
 /// Config key for the TUI theme.
 pub const THEME_KEY: &str = "fetchview.theme";
 
+/// Config key for the viewer that browses `FETCH_HEAD`.
+pub const VIEWER_KEY: &str = "fetchview.viewer";
+
 /// Resolved settings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     /// TUI colour theme.
     pub theme: ThemeName,
+    /// The shell command line that browses `FETCH_HEAD`.
+    pub viewer: String,
 }
 
 impl Config {
-    /// Read settings from `git config`; `theme_flag` wins over config.
+    /// Read settings from `git config`; the flags win over config.
     ///
     /// # Errors
     /// Git cannot be run, or a configured value is not recognised.
-    pub fn load(theme_flag: Option<ThemeName>) -> Result<Self> {
+    pub fn load(theme_flag: Option<ThemeName>, viewer_flag: Option<&str>) -> Result<Self> {
         let theme = match theme_flag {
             Some(theme) => theme,
             None => match get(THEME_KEY)? {
@@ -42,7 +49,23 @@ impl Config {
                 None => ThemeName::default(),
             },
         };
-        Ok(Self { theme })
+        let configured = get(VIEWER_KEY)?;
+        let viewer =
+            viewer::choose(viewer_flag, configured.as_deref()).map_err(
+                |reason| match viewer_flag {
+                    Some(value) => Error::BadFlag {
+                        flag: "--viewer",
+                        value: value.to_owned(),
+                        reason,
+                    },
+                    None => Error::BadConfig {
+                        key: VIEWER_KEY,
+                        value: configured.clone().unwrap_or_default(),
+                        reason,
+                    },
+                },
+            )?;
+        Ok(Self { theme, viewer })
     }
 }
 

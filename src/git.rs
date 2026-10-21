@@ -17,6 +17,8 @@ use crate::error::{Error, Result};
 pub struct Cmd {
     program: &'static str,
     args: Vec<String>,
+    /// What to print instead of `program args`, for shell command lines.
+    display: Option<String>,
 }
 
 impl Cmd {
@@ -24,6 +26,7 @@ impl Cmd {
         Self {
             program,
             args: args.into_iter().map(Into::into).collect(),
+            display: None,
         }
     }
 
@@ -81,10 +84,14 @@ impl Cmd {
         Self::new("git", ["rev-parse", "--show-toplevel"])
     }
 
-    /// `tig FETCH_HEAD`
+    /// A shell command line, run as `sh -c`. It prints as the line itself,
+    /// which is what you would paste into a shell.
     #[must_use]
-    pub fn tig_fetch_head() -> Self {
-        Self::new("tig", ["FETCH_HEAD"])
+    pub fn shell(line: &str) -> Self {
+        Self {
+            display: Some(line.to_owned()),
+            ..Self::new("sh", ["-c", line])
+        }
     }
 
     /// `git log --merges --format=%s [-n N] <range> --`
@@ -165,6 +172,27 @@ impl Cmd {
         })
     }
 
+    /// Run a viewer with inherited stdio. Any exit status is fine (`fzf`
+    /// exits 130 on Esc) except 127, which means the command was not found.
+    ///
+    /// # Errors
+    /// [`Error::Spawn`], or [`Error::ViewerNotFound`] on exit status 127.
+    pub fn run_viewer(&self) -> Result<()> {
+        let status = Command::new(self.program)
+            .args(&self.args)
+            .status()
+            .map_err(|source| Error::Spawn {
+                command: self.to_string(),
+                source,
+            })?;
+        if status.code() == Some(127) {
+            return Err(Error::ViewerNotFound {
+                command: self.to_string(),
+            });
+        }
+        Ok(())
+    }
+
     /// Run with inherited stdio (progress output, interactive programs).
     ///
     /// # Errors
@@ -191,6 +219,9 @@ impl Cmd {
 
 impl fmt::Display for Cmd {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(line) = &self.display {
+            return f.write_str(line);
+        }
         f.write_str(self.program)?;
         for arg in &self.args {
             write!(f, " {}", shell_quote(arg))?;
@@ -321,7 +352,11 @@ mod tests {
             Cmd::fetch("origin", "refs/pull/1/head").to_string(),
             "git fetch origin refs/pull/1/head"
         );
-        assert_eq!(Cmd::tig_fetch_head().to_string(), "tig FETCH_HEAD");
+        assert_eq!(Cmd::shell("tig FETCH_HEAD").to_string(), "tig FETCH_HEAD");
+        assert_eq!(
+            Cmd::shell("git log FETCH_HEAD | fzf --preview 'git show {1}'").to_string(),
+            "git log FETCH_HEAD | fzf --preview 'git show {1}'"
+        );
     }
 
     #[test]
@@ -337,6 +372,18 @@ mod tests {
             "git@github.com:a/b.git"
         );
         assert_eq!(redact_url("/srv/git/repo"), "/srv/git/repo");
+    }
+
+    #[test]
+    fn a_viewer_may_exit_nonzero_but_not_with_command_not_found() {
+        assert!(Cmd::shell("exit 0").run_viewer().is_ok());
+        assert!(Cmd::shell("exit 3").run_viewer().is_ok());
+        let err = Cmd::shell("exit 127").run_viewer().unwrap_err();
+        assert!(matches!(err, Error::ViewerNotFound { .. }), "{err}");
+        let err = Cmd::shell("definitely-not-a-command-xyz FETCH_HEAD")
+            .run_viewer()
+            .unwrap_err();
+        assert!(err.to_string().contains("tig"), "{err}");
     }
 
     #[test]

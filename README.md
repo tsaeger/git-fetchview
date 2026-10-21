@@ -12,7 +12,7 @@ git fetchview        # or the short form: git fv
 
 1. Choose a remote.
 2. Choose one of that remote's refs (from `git ls-remote`).
-3. It runs `git fetch <remote> <ref>`, then `tig FETCH_HEAD`.
+3. It runs `git fetch <remote> <ref>`, then opens `FETCH_HEAD` in a viewer (`tig` unless you choose another).
 
 It prints the plain commands as it goes, so you can paste them and do the same
 thing without this tool:
@@ -97,6 +97,32 @@ git config fetchview.theme gruvbox      # this repository only
 
 Themes: `kanagawa` (default), `gruvbox`, `nord`, `catppuccin`.
 Flags override config: `git fetchview --theme nord`.
+
+### Viewer
+
+`fetchview.viewer` chooses what browses `FETCH_HEAD`. It is a preset name or a
+command:
+
+```
+git config --global fetchview.viewer git-log
+git config fetchview.viewer 'gitk --all'               # FETCH_HEAD is appended
+git config fetchview.viewer 'git show --stat {}'       # {} is FETCH_HEAD
+git fetchview --viewer fzf                             # one-off
+```
+
+| preset | runs |
+|--------|------|
+| `tig` (default) | `tig FETCH_HEAD` |
+| `gitk` | `gitk FETCH_HEAD` |
+| `git-log` | `git log --graph --decorate --stat FETCH_HEAD` |
+| `fzf` | `git log --oneline --color=always FETCH_HEAD \| fzf --ansi --no-sort --preview 'git show --color=always {1}'` |
+| `fugitive` | `nvim -c 'Git log --graph --oneline FETCH_HEAD'` |
+
+A command runs through `sh -c`, so pipes work. The printed trail shows the exact
+command line that ran. A viewer's exit status is ignored, since `fzf` exits 130
+on `Esc`, except 127 (command not found), which is reported. The value comes from
+your own git config and is trusted the way `core.pager` is. lazygit and gitui
+take no revision, so they cannot be used directly.
 
 To use `git fv`, install both binaries (`git-fetchview` and `git-fv`).
 

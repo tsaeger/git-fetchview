@@ -366,3 +366,22 @@ fn a_bad_pointer_is_a_warning_not_a_failure() {
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(stderr(&out).contains("warning"), "{}", stderr(&out));
 }
+
+#[test]
+fn a_blank_viewer_flag_is_reported_as_a_flag_problem() {
+    let repo = Repo::new();
+    let out = repo.fv(&["--viewer", " "]);
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(err.contains("--viewer"), "{err}");
+    assert!(!err.contains("git config"), "{err}");
+}
+
+#[test]
+fn a_bad_viewer_in_git_config_is_reported_as_a_config_problem() {
+    let repo = Repo::new();
+    repo.git(&["config", "fetchview.theme", "neon"]);
+    let out = repo.fv(&[]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("fetchview.theme"), "{}", stderr(&out));
+}

@@ -13,5 +13,6 @@ pub mod error;
 pub mod git;
 pub mod remotes;
 pub mod tui;
+pub mod viewer;
 
 pub use error::{Error, Result};

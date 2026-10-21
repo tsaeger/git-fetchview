@@ -104,7 +104,7 @@ fn row_label(entry: &Entry) -> String {
 /// The source cannot be read, there is no terminal and `--all` was not
 /// given, or the file or config cannot be written.
 pub fn add(args: &AddArgs) -> Result<()> {
-    let theme = Config::load(None)?.theme;
+    let theme = Config::load(None, None)?.theme;
     let scanned = scan(&args.source)?;
     let (target_path, stored, scope) = target(args)?;
 
