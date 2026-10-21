@@ -44,6 +44,15 @@ impl List {
             .collect()
     }
 
+    /// Visible rows as `(original index, label)`.
+    #[must_use]
+    pub fn visible_rows(&self) -> Vec<(usize, &str)> {
+        self.visible()
+            .into_iter()
+            .map(|i| (i, self.labels[i].as_str()))
+            .collect()
+    }
+
     /// Cursor position among the visible rows.
     #[must_use]
     pub fn cursor(&self) -> usize {
@@ -137,6 +146,16 @@ mod tests {
         assert_eq!(l.cursor(), 0);
         l.clear();
         assert_eq!(l.visible().len(), 3);
+    }
+
+    #[test]
+    fn visible_rows_pair_original_index_with_label() {
+        let mut l = list();
+        "heads".chars().for_each(|c| l.push(c));
+        assert_eq!(
+            l.visible_rows(),
+            [(0, "refs/heads/main"), (1, "refs/heads/Dev")]
+        );
     }
 
     #[test]

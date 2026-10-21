@@ -6,6 +6,7 @@
 pub mod app;
 pub mod keys;
 pub mod list;
+pub mod select;
 pub mod theme;
 pub mod ui;
 
@@ -14,6 +15,7 @@ use ratatui::crossterm::event::{self, Event};
 use crate::error::Result;
 use crate::git::{self, Remote};
 use app::{App, Flow, Selection};
+use select::{Row, Select, SelectFlow};
 use theme::{Theme, ThemeName};
 
 /// Run the picker. Returns `None` if the user quit.
@@ -51,6 +53,41 @@ fn run(
             Flow::Continue => {}
             Flow::Quit => return Ok(None),
             Flow::Done(selection) => return Ok(Some(selection)),
+        }
+    }
+}
+
+/// Run the multi-select. Returns `None` if the user quit, otherwise the
+/// checked rows as indexes into `rows`.
+///
+/// # Errors
+/// Terminal I/O failures.
+pub fn select_many(rows: Vec<Row>, theme: ThemeName) -> Result<Option<Vec<usize>>> {
+    let theme = Theme::from(theme);
+    let mut state = Select::new(rows);
+    let mut terminal = ratatui::init();
+    let result = run_select(&mut terminal, &mut state, &theme);
+    ratatui::restore();
+    result
+}
+
+fn run_select(
+    terminal: &mut ratatui::DefaultTerminal,
+    state: &mut Select,
+    theme: &Theme,
+) -> Result<Option<Vec<usize>>> {
+    loop {
+        terminal.draw(|frame| ui::draw_select(frame, state, theme))?;
+        let Event::Key(key) = event::read()? else {
+            continue;
+        };
+        let Some(action) = keys::map(key, state.typing()) else {
+            continue;
+        };
+        match state.update(action) {
+            SelectFlow::Continue => {}
+            SelectFlow::Quit => return Ok(None),
+            SelectFlow::Done(chosen) => return Ok(Some(chosen)),
         }
     }
 }

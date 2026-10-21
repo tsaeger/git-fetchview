@@ -155,7 +155,11 @@ impl App {
             Action::Clear => self.list_mut().clear(),
             Action::Back => self.back(),
             Action::Enter => return self.enter(load),
-            Action::Quit | Action::Char(_) | Action::Backspace => {}
+            Action::Quit
+            | Action::Char(_)
+            | Action::Backspace
+            | Action::Toggle
+            | Action::ToggleAll => {}
         }
         Flow::Continue
     }
