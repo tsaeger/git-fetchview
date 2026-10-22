@@ -29,6 +29,7 @@ clap = { version = "4.6.7", features = ["derive"] }
 clap_complete = "4.6.11"
 clap_mangen = "0.3.3"
 ratatui = "0.30.2"
+regex = "1.13.1"
 thiserror = "2.0.21"
 
 [workspace]

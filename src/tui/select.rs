@@ -173,6 +173,7 @@ impl Select {
             | Action::Open
             | Action::Scan
             | Action::ShowHidden
+            | Action::ToggleRegex
             | Action::Confirm
             | Action::Char(_)
             | Action::Backspace
@@ -205,6 +206,7 @@ impl Select {
         match action {
             Action::Char(c) => self.list.push(c),
             Action::Backspace => self.list.pop(),
+            Action::ToggleRegex => self.list.toggle_mode(),
             // Both leave the box. The text stays, so the filter stays.
             Action::Enter | Action::Back => self.typing = false,
             _ => {}

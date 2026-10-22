@@ -5,6 +5,7 @@
 
 use std::cmp::{Ordering, Reverse};
 
+use crate::search::{Matcher, Mode};
 use crate::tui::keys::Action;
 
 /// How the rows are ordered: the column being sorted by.
@@ -60,6 +61,11 @@ pub struct List {
     reversed: bool,
     columns: Vec<SortOrder>,
     filter: String,
+    mode: Mode,
+    /// The last filter that compiled, which is what the rows show.
+    matcher: Matcher,
+    /// Why the filter as typed does not compile, in regex mode.
+    filter_error: Option<String>,
     cursor: usize,
 }
 
@@ -189,7 +195,7 @@ impl List {
     /// hides it is cleared first.
     pub fn focus(&mut self, index: usize) {
         if !self.visible().contains(&index) {
-            self.filter.clear();
+            self.clear();
         }
         if let Some(position) = self.visible().iter().position(|&i| i == index) {
             self.cursor = position;
@@ -207,7 +213,7 @@ impl List {
     #[must_use]
     pub fn visible(&self) -> Vec<usize> {
         let mut rows: Vec<usize> = (0..self.labels.len())
-            .filter(|&i| matches(&self.labels[i], &self.filter))
+            .filter(|&i| self.matcher.is_row_match(&self.labels[i], &self.cells[i]))
             .collect();
         let reversed = self.reversed;
         let keys = &self.keys;
@@ -335,18 +341,48 @@ impl List {
     /// Append to the filter.
     pub fn push(&mut self, c: char) {
         self.filter.push(c);
-        self.cursor = 0;
+        self.refilter();
     }
 
     /// Remove the last filter character.
     pub fn pop(&mut self) {
         self.filter.pop();
-        self.cursor = 0;
+        self.refilter();
     }
 
     /// Clear the filter.
     pub fn clear(&mut self) {
         self.filter.clear();
+        self.refilter();
+    }
+
+    /// Read the same text as the other kind of search.
+    pub fn toggle_mode(&mut self) {
+        self.mode = self.mode.toggled();
+        self.refilter();
+    }
+
+    /// How the filter text is read.
+    #[must_use]
+    pub fn mode(&self) -> Mode {
+        self.mode
+    }
+
+    /// Why the filter does not compile, if it is a bad regex. The rows are
+    /// those of the last filter that did.
+    #[must_use]
+    pub fn filter_error(&self) -> Option<&str> {
+        self.filter_error.as_deref()
+    }
+
+    fn refilter(&mut self) {
+        match Matcher::new(self.mode, &self.filter) {
+            Ok(matcher) => {
+                self.matcher = matcher;
+                self.filter_error = None;
+            }
+            Err(why) => self.filter_error = Some(why),
+        }
         self.cursor = 0;
     }
 }
@@ -405,13 +441,66 @@ fn take_number(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
     digits
 }
 
-/// Case-insensitive substring match. Regex support will slot in here.
-fn matches(label: &str, filter: &str) -> bool {
-    filter.is_empty() || label.to_lowercase().contains(&filter.to_lowercase())
-}
-
 #[cfg(test)]
 mod tests {
+    fn typed(l: &mut List, text: &str) {
+        for c in text.chars() {
+            l.push(c);
+        }
+    }
+
+    fn tags() -> List {
+        List::new(
+            ["v6.1", "v6.1-rc1", "v6.2", "v6.2-rc1", "net-next"]
+                .map(String::from)
+                .to_vec(),
+        )
+    }
+
+    #[test]
+    fn the_filter_understands_and_not_and_or() {
+        let mut l = tags();
+        typed(&mut l, "v6 !rc");
+        assert_eq!(l.visible_labels(), ["v6.1", "v6.2"]);
+        l.clear();
+        typed(&mut l, "v6.1 !rc | net");
+        assert_eq!(l.visible_labels(), ["v6.1", "net-next"]);
+    }
+
+    #[test]
+    fn regex_mode_filters_by_pattern_and_toggling_keeps_the_text() {
+        let mut l = tags();
+        typed(&mut l, "^v6\\.[12]$");
+        // In simple mode that is a literal string, which matches nothing.
+        assert_eq!(l.visible().len(), 0);
+        l.toggle_mode();
+        assert_eq!(l.mode(), crate::search::Mode::Regex);
+        assert_eq!(l.filter(), "^v6\\.[12]$");
+        assert_eq!(l.visible_labels(), ["v6.1", "v6.2"]);
+        l.toggle_mode();
+        assert_eq!(l.mode(), crate::search::Mode::Simple);
+        assert_eq!(l.visible().len(), 0);
+    }
+
+    #[test]
+    fn a_bad_regex_keeps_the_last_list_and_says_why() {
+        let mut l = tags();
+        l.toggle_mode();
+        typed(&mut l, "rc1");
+        assert_eq!(l.visible().len(), 2);
+        l.push('(');
+        assert!(l.filter_error().is_some());
+        // The rows are the ones for the last pattern that compiled.
+        assert_eq!(l.visible().len(), 2);
+        l.pop();
+        assert_eq!(l.filter_error(), None);
+        assert_eq!(l.visible().len(), 2);
+        l.push('(');
+        l.clear();
+        assert_eq!(l.filter_error(), None);
+        assert_eq!(l.visible().len(), 5);
+    }
+
     #[test]
     fn remove_drops_a_row_and_keeps_the_cursor_in_range() {
         let mut l = List::new(vec!["a".into(), "b".into(), "c".into()]);

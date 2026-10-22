@@ -490,6 +490,7 @@ impl App {
             Action::Quit
             | Action::Interrupt
             | Action::Confirm
+            | Action::ToggleRegex
             | Action::Char(_)
             | Action::Backspace
             | Action::Toggle
@@ -864,6 +865,7 @@ impl App {
         match action {
             Action::Char(c) => self.list_mut().push(c),
             Action::Backspace => self.list_mut().pop(),
+            Action::ToggleRegex => self.list_mut().toggle_mode(),
             // Both leave the box. The text stays, so the filter stays.
             Action::Enter | Action::Back => self.typing = false,
             _ => {}
@@ -1272,6 +1274,29 @@ mod tests {
             .iter()
             .map(|(_, c)| c[0].clone())
             .collect()
+    }
+
+    #[test]
+    fn the_search_takes_not_and_or_and_ctrl_r_switches_to_regex() {
+        let mut a = collected_app();
+        a.step(Command::from(Action::Search));
+        typed(&mut a, "!origin");
+        assert_eq!(a.list().visible().len(), 2);
+        for _ in 0.."!origin".len() {
+            a.step(Command::from(Action::Backspace));
+        }
+        typed(&mut a, "origin | usb");
+        assert_eq!(a.list().visible().len(), 2);
+        a.step(Command::from(Action::ToggleRegex));
+        for _ in 0.."origin | usb".len() {
+            a.step(Command::from(Action::Backspace));
+        }
+        typed(&mut a, "^(origin|usb/)");
+        assert_eq!(a.list().visible().len(), 2);
+        // Leaving the box keeps the filter and its mode.
+        a.step(Command::from(Action::Back));
+        assert_eq!(a.list().visible().len(), 2);
+        assert_eq!(a.list().mode(), crate::search::Mode::Regex);
     }
 
     #[test]

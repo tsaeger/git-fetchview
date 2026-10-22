@@ -580,6 +580,7 @@ dependencies = [
  "clap_complete",
  "clap_mangen",
  "ratatui",
+ "regex",
  "thiserror 2.0.21",
 ]
 

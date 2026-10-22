@@ -106,6 +106,7 @@ how many it hid, and opening mainline itself shows everything. See
 | `Enter` / `l`       | pick this one and go to the next level           |
 | `Esc` / `h`         | go back (does nothing at the top)                |
 | `/` or `i`          | edit the search box; `Esc` or `Enter` leaves it  |
+| `Ctrl-r`            | in the search box: switch between plain and regex |
 | `c`                 | clear the search                                 |
 | `s` then `h` `l`    | choose the sort column; `r` reverses             |
 | `H`                 | in the refs list: show or hide the hidden refs   |

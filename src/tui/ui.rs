@@ -199,13 +199,21 @@ fn sort_span<'a>(order: SortOrder, reversed: bool, theme: &Theme) -> Option<Span
 /// The search box: always on the top line, so the filter in force is never
 /// something to hunt for.
 fn search_line<'a>(list: &List, typing: bool, theme: &Theme) -> Line<'a> {
-    let label = Span::styled("search: ", Style::new().fg(theme.accent));
+    let label = Span::styled(
+        format!("{}: ", list.mode().label()),
+        Style::new().fg(theme.accent),
+    );
+    let problem = list
+        .filter_error()
+        .map(|why| Span::styled(format!("  {why}"), Style::new().fg(theme.error)));
     if typing {
-        return Line::from(vec![
+        let mut spans = vec![
             label,
             Span::raw(list.filter().to_owned()),
             Span::styled("█", Style::new().fg(theme.accent)),
-        ]);
+        ];
+        spans.extend(problem);
+        return Line::from(spans);
     }
     if list.filter().is_empty() {
         return Line::from(vec![
@@ -213,19 +221,21 @@ fn search_line<'a>(list: &List, typing: bool, theme: &Theme) -> Line<'a> {
             Span::styled("press / or i to search", Style::new().fg(theme.dim)),
         ]);
     }
-    Line::from(vec![
+    let mut spans = vec![
         label,
         Span::raw(list.filter().to_owned()),
         Span::styled(
             format!("  {} of {}", list.visible().len(), list.total()),
             Style::new().fg(theme.dim),
         ),
-    ])
+    ];
+    spans.extend(problem);
+    Line::from(spans)
 }
 
 fn typing_hints(theme: &Theme) -> Line<'static> {
     Line::from(Span::styled(
-        "type to filter  enter/esc done",
+        "type to filter (! not, | or)  ctrl-r regex  enter/esc done",
         Style::new().fg(theme.dim),
     ))
 }
@@ -547,6 +557,25 @@ mod tests {
         let lines = screen(70, 6, |f| draw(f, &app, &theme, ""));
         assert!(lines[5].contains("add url: ext::x"), "{:?}", lines[5]);
         assert!(lines[5].contains("transport"), "{:?}", lines[5]);
+    }
+
+    #[test]
+    fn the_search_line_names_its_mode_and_shows_a_bad_pattern() {
+        let mut app = App::new(vec![remote("origin", "https://h/o", &[])]);
+        let theme = Theme::from(ThemeName::default());
+        for action in [Action::Search, Action::ToggleRegex, Action::Char('(')] {
+            app.step(crate::tui::keys::Command::from(action));
+        }
+        let lines = screen(80, 6, |f| draw(f, &app, &theme, ""));
+        assert!(lines[0].starts_with("regex: ("), "{:?}", lines[0]);
+        assert!(lines[0].contains("unclosed"), "{:?}", lines[0]);
+        // The hint says how to switch back.
+        assert!(lines[5].contains("ctrl-r"), "{:?}", lines[5]);
+
+        let mut simple = App::new(vec![remote("origin", "https://h/o", &[])]);
+        simple.step(crate::tui::keys::Command::from(Action::Search));
+        let lines = screen(80, 6, |f| draw(f, &simple, &theme, ""));
+        assert!(lines[0].starts_with("search: "), "{:?}", lines[0]);
     }
 
     #[test]

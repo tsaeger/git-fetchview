@@ -643,3 +643,53 @@ fn an_empty_hide_refs_value_turns_the_pattern_hiding_off() {
     s.send("q");
     assert!(s.wait_exit().success());
 }
+
+#[test]
+fn the_search_box_takes_not_and_or_and_switches_to_regex_with_ctrl_r() {
+    let world = World::new();
+    let (work, home) = (world.work.path(), world.home.path());
+    git(work, home, &["tag", "v1.0-rc1"]);
+    git(work, home, &["tag", "v2.0"]);
+    git(work, home, &["push", "-q", "origin", "v1.0-rc1", "v2.0"]);
+    let mut s = session!(world);
+    s.wait_for("origin");
+    s.send("\r");
+    s.wait_for("refs/tags/v1.0-rc1");
+
+    // Simple mode: space is AND, ! excludes.
+    s.send("i");
+    s.send("tags !rc");
+    s.wait_until("two tags", |t| {
+        t.contains("refs/tags/v2.0")
+            && t.contains("refs/tags/v1.0 ")
+            && !t.contains("refs/tags/v1.0-rc1")
+            && !t.contains("refs/heads/main")
+    });
+    // | is OR, and AND binds tighter.
+    s.send(" | heads");
+    s.wait_until("heads back too", |t| t.contains("refs/heads/main"));
+    s.send("\x1b");
+    s.wait_for("search: tags !rc | heads");
+
+    // Ctrl-r reads the same text as a regex; start over with a pattern.
+    s.send("i");
+    s.send("\x12");
+    s.wait_for("regex: tags !rc | heads");
+    for _ in 0.."tags !rc | heads".len() {
+        s.send("\x7f");
+    }
+    s.send("v[12]\\.0$");
+    s.wait_until("the two release tags", |t| {
+        t.contains("refs/tags/v2.0") && !t.contains("refs/tags/v1.0-rc1")
+    });
+
+    // A pattern that does not compile says why and leaves the rows alone.
+    s.send("(");
+    s.wait_for("unclosed group");
+    assert!(s.text().contains("refs/tags/v2.0"), "{}", s.text());
+    s.send("\x1b");
+    // Esc and the next key sent together would read as Alt-q.
+    s.wait_until("the box closed", |t| !t.contains('\u{2588}'));
+    s.send("q");
+    assert!(s.wait_exit().success());
+}

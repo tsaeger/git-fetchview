@@ -45,6 +45,12 @@ test = false
 doc = false
 
 [[bin]]
+name = "parse_query"
+path = "fuzz_targets/parse_query.rs"
+test = false
+doc = false
+
+[[bin]]
 name = "validate_url"
 path = "fuzz_targets/validate_url.rs"
 test = false

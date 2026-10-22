@@ -67,6 +67,8 @@ pub enum Action {
     Scan,
     /// Show or hide the refs that were left out of the refs list.
     ShowHidden,
+    /// Ctrl-r in the search box: switch between simple and regex matching.
+    ToggleRegex,
     /// Say yes to the question being asked.
     Confirm,
     /// Clear the search / filter.
@@ -211,6 +213,7 @@ pub fn map(key: KeyEvent, mode: Mode) -> Option<Action> {
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         return match (mode, key.code) {
             (_, KeyCode::Char('c')) => Some(Action::Interrupt),
+            (Mode::Typing, KeyCode::Char('r')) => Some(Action::ToggleRegex),
             (Mode::Typing | Mode::Prompt | Mode::Menu, _) => None,
             (_, KeyCode::Char('d')) => Some(Action::HalfPageDown),
             (_, KeyCode::Char('u')) => Some(Action::HalfPageUp),
@@ -344,6 +347,19 @@ mod tests {
         assert_eq!(
             p.feed(key(KeyCode::Char('5')), Mode::Confirm),
             cmd(Action::Back, None)
+        );
+    }
+
+    #[test]
+    fn ctrl_r_switches_the_search_mode_only_while_typing() {
+        let ctrl_r = KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL);
+        assert_eq!(map(ctrl_r, Mode::Typing), Some(Action::ToggleRegex));
+        assert_eq!(map(ctrl_r, Mode::Normal), None);
+        assert_eq!(map(ctrl_r, Mode::Prompt), None);
+        // A plain r is text while typing.
+        assert_eq!(
+            map(key(KeyCode::Char('r')), Mode::Typing),
+            Some(Action::Char('r'))
         );
     }
 

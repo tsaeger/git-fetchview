@@ -65,6 +65,7 @@ flowchart TD
 | `commands` | `add`, `list` and `remove` |
 | `config` | reads `fetchview.*` from `git config`; flag, then config, then default |
 | `git` | every external call as a `Cmd`; parsing of `ls-remote` and `remote -v` output |
+| `search` | what a search-box query matches: simple terms or a regex. Pure, so it is fuzzed |
 | `viewer` | viewer presets and resolving a preset name or a command |
 | `hide` | the refs other trees already carry, and the cache of their `ls-remote` output |
 | `remotes` | collected remotes: entries, the remotes file, sources, and the registry of files |
@@ -198,6 +199,7 @@ fetch is injected as a closure in the tests, so they need no network.
   and cancelling a stalled load. It needs no network, and skips itself where no
   pty can be opened.
 - `fuzz/` has a target for each parser: `ls-remote` output, `MAINTAINERS`,
-  merge subjects, the remotes file, remotes lists and URL validation.
+  merge subjects, the remotes file, remotes lists, search queries and URL
+  validation.
 - `cargo xtask ci` runs all of it except fuzzing and Miri. See
   [development.md](development.md).
