@@ -22,6 +22,7 @@
 //! | `Space`                 | toggle a row and advance, or the highlighted rows (multi-select) |
 //! | `J` / `K`, Shift-`↓`/`↑` | move and highlight a range (multi-select; Shift-arrows not in Terminal.app) |
 //! | `a`                     | toggle all visible rows (multi-select) |
+//! | `?`                     | show every key, in sections         |
 //! | `q` / `Ctrl-c`          | quit, from any level                |
 //!
 //! While typing a search, characters are text; `Enter` and `Esc` both leave
@@ -88,6 +89,8 @@ pub enum Action {
     ExtendDown,
     /// Move up and highlight from where the highlight started (multi-select).
     ExtendUp,
+    /// Show the key help.
+    Help,
     /// Toggle the row under the cursor, or the highlighted rows (multi-select).
     Toggle,
     /// Toggle every visible row (multi-select).
@@ -112,6 +115,8 @@ pub enum Mode {
     Prompt,
     /// A menu is open: a letter picks an item, any other key closes it.
     Menu,
+    /// The key help is showing: any key closes it.
+    Help,
 }
 
 /// An action with the count typed before it (`5j`, `3G`).
@@ -218,6 +223,7 @@ pub fn map(key: KeyEvent, mode: Mode) -> Option<Action> {
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         return match (mode, key.code) {
             (_, KeyCode::Char('c')) => Some(Action::Interrupt),
+            (Mode::Help, _) => Some(Action::Back),
             (Mode::Typing, KeyCode::Char('r')) => Some(Action::ToggleRegex),
             (Mode::Typing | Mode::Prompt | Mode::Menu, _) => None,
             (_, KeyCode::Char('d')) => Some(Action::HalfPageDown),
@@ -232,6 +238,7 @@ pub fn map(key: KeyEvent, mode: Mode) -> Option<Action> {
         Mode::Normal => map_normal(key.code, key.modifiers),
         Mode::Confirm => Some(map_confirm(key.code)),
         Mode::Menu => Some(map_menu(key.code)),
+        Mode::Help => Some(Action::Back),
     }
 }
 
@@ -295,6 +302,7 @@ fn map_normal(code: KeyCode, modifiers: KeyModifiers) -> Option<Action> {
         KeyCode::Char('s') => Some(Action::Sort),
         KeyCode::Char('/' | 'i') => Some(Action::Search),
         KeyCode::Char('f') => Some(Action::Filter),
+        KeyCode::Char('?') => Some(Action::Help),
         KeyCode::Char('c') => Some(Action::Clear),
         KeyCode::Char('d') => Some(Action::Delete),
         KeyCode::Char('n') => Some(Action::New),
@@ -306,6 +314,229 @@ fn map_normal(code: KeyCode, modifiers: KeyModifiers) -> Option<Action> {
         _ => None,
     })
 }
+
+/// One key that must do `action` in `mode`. The help table lists these so a
+/// test can check what it says against what the keymap does.
+#[derive(Debug, Clone, Copy)]
+pub struct Sample {
+    /// The key.
+    pub code: KeyCode,
+    /// Held with it.
+    pub modifiers: KeyModifiers,
+    /// Which keymap to ask.
+    pub mode: Mode,
+    /// What the keymap should answer.
+    pub action: Action,
+}
+
+/// One line of the help: the keys as shown, what they do, and a check.
+#[derive(Debug, Clone, Copy)]
+pub struct HelpEntry {
+    /// The keys, as shown.
+    pub keys: &'static str,
+    /// What they do.
+    pub does: &'static str,
+    /// Keys from the line that the keymap must agree with.
+    pub samples: &'static [Sample],
+}
+
+/// A titled group of help lines.
+#[derive(Debug, Clone, Copy)]
+pub struct HelpSection {
+    /// The heading.
+    pub title: &'static str,
+    /// The lines under it.
+    pub entries: &'static [HelpEntry],
+}
+
+const fn plain(code: KeyCode, action: Action) -> Sample {
+    Sample {
+        code,
+        modifiers: KeyModifiers::NONE,
+        mode: Mode::Normal,
+        action,
+    }
+}
+
+const fn ctrl(c: char, mode: Mode, action: Action) -> Sample {
+    Sample {
+        code: KeyCode::Char(c),
+        modifiers: KeyModifiers::CONTROL,
+        mode,
+        action,
+    }
+}
+
+const fn entry(keys: &'static str, does: &'static str, samples: &'static [Sample]) -> HelpEntry {
+    HelpEntry {
+        keys,
+        does,
+        samples,
+    }
+}
+
+/// Every key, for the `?` overlay. A test checks each sample against [`map`]
+/// and that no key in the keymap is missing, so this cannot drift from it.
+pub const HELP: &[HelpSection] = &[
+    HelpSection {
+        title: "Move",
+        entries: &[
+            entry(
+                "j k \u{2193} \u{2191}",
+                "move; 5j counts",
+                &[
+                    plain(KeyCode::Char('j'), Action::Down),
+                    plain(KeyCode::Char('k'), Action::Up),
+                ],
+            ),
+            entry(
+                "gg G",
+                "top, bottom; 5G row 5",
+                &[
+                    plain(KeyCode::Home, Action::Top),
+                    plain(KeyCode::Char('G'), Action::Bottom),
+                ],
+            ),
+            entry(
+                "^d ^u ^f ^b",
+                "half page, page",
+                &[
+                    ctrl('d', Mode::Normal, Action::HalfPageDown),
+                    ctrl('u', Mode::Normal, Action::HalfPageUp),
+                    ctrl('f', Mode::Normal, Action::PageDown),
+                    ctrl('b', Mode::Normal, Action::PageUp),
+                ],
+            ),
+        ],
+    },
+    HelpSection {
+        title: "Levels",
+        entries: &[
+            entry(
+                "Enter",
+                "open (write in add)",
+                &[plain(KeyCode::Enter, Action::Enter)],
+            ),
+            entry(
+                "Esc",
+                "back; cancels input",
+                &[plain(KeyCode::Esc, Action::Back)],
+            ),
+            entry(
+                "q ^c",
+                "quit",
+                &[
+                    plain(KeyCode::Char('q'), Action::Quit),
+                    ctrl('c', Mode::Normal, Action::Interrupt),
+                ],
+            ),
+            entry("?", "this help", &[plain(KeyCode::Char('?'), Action::Help)]),
+        ],
+    },
+    HelpSection {
+        title: "Search and filter",
+        entries: &[
+            entry(
+                "/ i",
+                "search; Esc leaves",
+                &[
+                    plain(KeyCode::Char('/'), Action::Search),
+                    plain(KeyCode::Char('i'), Action::Search),
+                ],
+            ),
+            entry(
+                "^r",
+                "in a box: plain or regex",
+                &[ctrl('r', Mode::Typing, Action::ToggleRegex)],
+            ),
+            entry(
+                "f",
+                "filter the column",
+                &[plain(KeyCode::Char('f'), Action::Filter)],
+            ),
+            entry(
+                "c",
+                "clear search, filters, sort",
+                &[plain(KeyCode::Char('c'), Action::Clear)],
+            ),
+        ],
+    },
+    HelpSection {
+        title: "Columns",
+        entries: &[
+            entry(
+                "h l \u{2190} \u{2192}",
+                "column cursor",
+                &[
+                    plain(KeyCode::Char('h'), Action::ColumnPrev),
+                    plain(KeyCode::Char('l'), Action::ColumnNext),
+                ],
+            ),
+            entry(
+                "s",
+                "sort: up, down, off",
+                &[plain(KeyCode::Char('s'), Action::Sort)],
+            ),
+        ],
+    },
+    HelpSection {
+        title: "Remote list",
+        entries: &[
+            entry("n", "add a URL", &[plain(KeyCode::Char('n'), Action::New)]),
+            entry(
+                "o",
+                "browse a URL once",
+                &[plain(KeyCode::Char('o'), Action::Open)],
+            ),
+            entry(
+                "p",
+                "make it a git remote",
+                &[plain(KeyCode::Char('p'), Action::Promote)],
+            ),
+            entry(
+                "d",
+                "remove a collected one",
+                &[plain(KeyCode::Char('d'), Action::Delete)],
+            ),
+            entry(
+                "A",
+                "scan: m t f",
+                &[plain(KeyCode::Char('A'), Action::Scan)],
+            ),
+        ],
+    },
+    HelpSection {
+        title: "Refs list",
+        entries: &[entry(
+            "H",
+            "show hidden refs",
+            &[plain(KeyCode::Char('H'), Action::ShowHidden)],
+        )],
+    },
+    HelpSection {
+        title: "Add picker",
+        entries: &[
+            entry(
+                "space",
+                "mark and move on",
+                &[plain(KeyCode::Char(' '), Action::Toggle)],
+            ),
+            entry(
+                "J K",
+                "highlight a range",
+                &[
+                    plain(KeyCode::Char('J'), Action::ExtendDown),
+                    plain(KeyCode::Char('K'), Action::ExtendUp),
+                ],
+            ),
+            entry(
+                "a",
+                "mark all shown",
+                &[plain(KeyCode::Char('a'), Action::ToggleAll)],
+            ),
+        ],
+    },
+];
 
 #[cfg(test)]
 mod tests {
@@ -714,5 +945,78 @@ mod tests {
         for mode in [Mode::Typing, Mode::Normal] {
             assert_eq!(map(k, mode), Some(Action::Interrupt));
         }
+    }
+
+    #[test]
+    fn every_help_sample_is_what_the_keymap_does() {
+        for section in HELP {
+            for line in section.entries {
+                assert!(!line.samples.is_empty(), "{}", line.keys);
+                for sample in line.samples {
+                    let got = map(KeyEvent::new(sample.code, sample.modifiers), sample.mode);
+                    assert_eq!(got, Some(sample.action), "{}: {sample:?}", line.keys);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_key_in_the_keymap_is_in_the_help() {
+        let documented: Vec<Action> = HELP
+            .iter()
+            .flat_map(|s| s.entries)
+            .flat_map(|e| e.samples)
+            .map(|s| s.action)
+            .collect();
+        let mut keys: Vec<KeyEvent> = Vec::new();
+        for c in ' '..='~' {
+            keys.push(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+            keys.push(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL));
+        }
+        for code in [
+            KeyCode::Enter,
+            KeyCode::Esc,
+            KeyCode::Up,
+            KeyCode::Down,
+            KeyCode::Left,
+            KeyCode::Right,
+            KeyCode::Home,
+            KeyCode::End,
+            KeyCode::PageUp,
+            KeyCode::PageDown,
+        ] {
+            keys.push(KeyEvent::new(code, KeyModifiers::NONE));
+            keys.push(KeyEvent::new(code, KeyModifiers::SHIFT));
+        }
+        for key in keys {
+            for mode in [Mode::Normal, Mode::Typing] {
+                // Typing keys are text, and Backspace is not a command.
+                if let Some(action) = map(key, mode)
+                    && !matches!(action, Action::Char(_) | Action::Backspace)
+                {
+                    assert!(
+                        documented.contains(&action)
+                            || (mode == Mode::Typing && action == Action::Enter),
+                        "{key:?} in {mode:?} does {action:?}, which the help does not list"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn any_key_closes_the_help_but_ctrl_c_still_quits() {
+        for code in [
+            KeyCode::Char('x'),
+            KeyCode::Enter,
+            KeyCode::Up,
+            KeyCode::Esc,
+        ] {
+            assert_eq!(map(key(code), Mode::Help), Some(Action::Back));
+        }
+        let ctrl_d = KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL);
+        assert_eq!(map(ctrl_d, Mode::Help), Some(Action::Back));
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(map(ctrl_c, Mode::Help), Some(Action::Interrupt));
     }
 }

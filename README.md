@@ -121,6 +121,7 @@ how many it hid, and opening mainline itself shows everything. See
 | `Enter`             | pick this one and go to the next level           |
 | `Esc`               | go back (does nothing at the top)                |
 | `h` `l` / `←` `→`   | move the column cursor (underlines its filter box) |
+| `?`                 | show every key, in sections; any key closes it   |
 | `f`                 | filter the column under the cursor; `Esc` or `Enter` leaves the box |
 | `/` or `i`          | edit the search box; `Esc` or `Enter` leaves it  |
 | `Ctrl-r`            | in the search box: switch between plain and regex |

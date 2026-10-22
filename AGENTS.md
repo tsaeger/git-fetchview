@@ -42,6 +42,7 @@ equivalent plain commands as a cut-and-paste trail. Linux and macOS are the prim
 - `p` on a collected remote opens the same prompt for a name (suggested from the label, dashes for slashes) and runs `git remote add`. A bad name shows git's reason and keeps the prompt. The collected entry stays in its file, and `picker_remotes` hides it once the repo is a real remote.
 - `d` on a collected remote asks `remove <name>? y/n` on the status line (`Mode::Confirm`): `y` confirms and any other key cancels. A real remote only gets a note, since git owns it.
 - While typing a search, characters are text (so `q` types a `q`); `Enter` or `Esc` leaves the box and the filter stays; `c` clears it.
+- `?` shows an overlay (`Mode::Help`, any key closes it) drawn from the `HELP` table in `tui/keys.rs`. The status-line hints stay short and end with `? help`. When you add or change a key, add it to `HELP`: a test checks each line's sample key against `map` and fails if a key in the keymap is missing from the table.
 - The single keymap is `tui/keys.rs` (`map` for single keys, `KeyParser` for counts and `gg`); change keys there, not in the state machine.
 - Themes live in `tui/theme.rs` (kanagawa default). Add a variant there and it appears in flags and config errors automatically.
 

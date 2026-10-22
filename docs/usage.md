@@ -17,6 +17,7 @@ The README covers the first steps. This is the reference.
 | `Enter`                 | drop in: select and go to the next level    |
 | `Esc`                   | drop out (does nothing at the top level)    |
 | `h` `l` / `←` `→`       | move the column cursor (the underlined filter box) |
+| `?`                     | show every key in sections over the screen; any key closes it |
 | `f`                     | remote list and `add`: filter the column under the cursor (same syntax as search); `Esc` / `Enter` leaves the box |
 | `/` / `i`               | edit the search box at the top (substring, case-insensitive) |
 | `Esc` / `Enter`         | in the search box: leave it, keeping the text |

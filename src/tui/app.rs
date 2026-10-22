@@ -220,6 +220,8 @@ pub struct App {
     ref_list: List,
     level: Level,
     typing: bool,
+    /// The key help is showing; the next key closes it.
+    help: bool,
     error: Option<String>,
     notice: Option<String>,
     viewport: usize,
@@ -258,6 +260,7 @@ impl App {
             ref_list: List::default(),
             level: Level::Remotes,
             typing: false,
+            help: false,
             error: None,
             notice: None,
             viewport: 10,
@@ -371,7 +374,9 @@ impl App {
     /// Which keymap is in force.
     #[must_use]
     pub fn mode(&self) -> Mode {
-        if self.confirming.is_some() {
+        if self.help {
+            Mode::Help
+        } else if self.confirming.is_some() {
             Mode::Confirm
         } else if self.menu.is_some() {
             Mode::Menu
@@ -382,6 +387,12 @@ impl App {
         } else {
             Mode::Normal
         }
+    }
+
+    /// True while the key help is showing.
+    #[must_use]
+    pub fn help(&self) -> bool {
+        self.help
     }
 
     /// True while a search is being typed.
@@ -458,6 +469,14 @@ impl App {
         if action == Action::Quit {
             return Flow::Quit;
         }
+        if self.help {
+            self.help = false;
+            return if action == Action::Interrupt {
+                Flow::Quit
+            } else {
+                Flow::Continue
+            };
+        }
         if let Some(index) = self.confirming.take() {
             return match action {
                 Action::Confirm => Flow::Remove(self.remotes[index].clone()),
@@ -491,6 +510,7 @@ impl App {
                 self.typing = true;
             }
             Action::Filter => self.typing = self.list_mut().begin_column_edit(),
+            Action::Help => self.help = true,
             Action::Clear => self.list_mut().clear(),
             Action::Sort => self.list_mut().cycle_sort(),
             Action::ColumnPrev => self.list_mut().move_column(-1),
@@ -1240,6 +1260,25 @@ mod tests {
         a.update(Action::Back, &mut refs);
         a.update(Action::Clear, &mut refs);
         assert_eq!(a.list().visible().len(), 2);
+    }
+
+    #[test]
+    fn question_mark_opens_the_help_and_any_key_closes_it_without_acting() {
+        let mut a = app();
+        a.update(Action::Help, &mut refs);
+        assert!(a.help());
+        assert_eq!(a.mode(), Mode::Help);
+        a.update(Action::Down, &mut refs);
+        assert!(!a.help());
+        assert_eq!(a.mode(), Mode::Normal);
+        assert_eq!(a.list().cursor(), 0, "the key that closed it did not move");
+    }
+
+    #[test]
+    fn ctrl_c_quits_from_the_help() {
+        let mut a = app();
+        a.update(Action::Help, &mut refs);
+        assert_eq!(a.step(Command::from(Action::Interrupt)), Flow::Quit);
     }
 
     #[test]

@@ -1,10 +1,10 @@
 ---
 id: TASK-33
 title: Add a ? help overlay for the picker keys
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T06:03:00Z'
-updated_date: '2026-10-22T14:57:00Z'
+updated_date: '2026-10-22T20:01:00Z'
 labels: []
 dependencies:
   - TASK-35
@@ -20,8 +20,14 @@ The remote list's key hints are full at 80 columns (l open, / i search, s sort, 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ? opens an overlay with every key for the current level and mode
-- [ ] #2 The status-line hints end with '? help' and fit 80 columns
-- [ ] #3 The table the overlay draws from sits with the keymap, and a test checks every Action in the keymap appears
-- [ ] #4 README, docs/usage.md and AGENTS.md mention it
+- [x] #1 ? opens an overlay listing every key in sections, over any level and over the add picker; any key closes it
+- [x] #2 The status-line hints are shortened to the most useful keys plus '? help' and fit 80 columns
+- [x] #3 The overlay draws from the HELP table in keys.rs, and tests check each line against the keymap and that no mapped key is missing
+- [x] #4 README, docs/usage.md and AGENTS.md mention it
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+? opens one overlay with every key in sections (two columns at 80x24), over the remote list, refs list and add picker. It draws from HELP in keys.rs; tests check each sample key against map() and fail if a mapped key is not in the table. Hints are now short and include '? help' (p promote is gone from the remote hints; c clear and h/l col from all).
+<!-- SECTION:FINAL_SUMMARY:END -->

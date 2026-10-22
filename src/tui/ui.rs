@@ -7,21 +7,22 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState};
+use ratatui::widgets::{Block, Cell, Clear, Paragraph, Row, Table, TableState};
 
 use crate::tui::app::{App, Level};
+use crate::tui::keys::{HELP, HelpSection};
 use crate::tui::list::{Direction, List, SortColumn};
 use crate::tui::select::Select;
 use crate::tui::theme::Theme;
 
 /// Short, because the hidden-refs count can come first on the same line.
-const HINTS: &str = "\u{21b5} open  esc back  h/l col  s sort  / i search  q quit";
+const HINTS: &str = "\u{21b5} open  esc back  / i search  s sort  ? help  q quit";
 /// The top level has nowhere to go back to, and offers removing.
 const REMOTE_HINTS: &str =
-    "/ i search  h/l col  s sort  n new  o once  A scan  p promote  d remove  q quit";
+    "/ i search  f filter  s sort  n new  o once  A scan  d remove  ? help  q quit";
 const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const SELECT_HINTS: &str =
-    "space toggle  J/K range  a all  \u{21b5} write  / i search  h/l col  s sort  q quit";
+    "space toggle  J/K range  a all  \u{21b5} write  / i search  f filter  ? help  q quit";
 
 fn base(theme: &Theme) -> Style {
     Style::new().fg(theme.fg).bg(theme.bg)
@@ -147,6 +148,105 @@ fn render_table(
         .highlight_symbol("> ");
     let mut state = TableState::default().with_selected(Some(list.cursor()));
     frame.render_stateful_widget(table, area, &mut state);
+}
+
+/// The lines of one help section, keys first, then a blank line.
+fn help_lines<'a>(section: &HelpSection, key_width: usize, theme: &Theme) -> Vec<Line<'a>> {
+    let mut lines = vec![Line::styled(
+        section.title,
+        Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+    )];
+    for entry in section.entries {
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("{:key_width$}  ", entry.keys),
+                Style::new().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(entry.does, Style::new().fg(theme.dim)),
+        ]));
+    }
+    lines.push(Line::default());
+    lines
+}
+
+/// Every key, in sections, over whatever is on screen. Any key closes it.
+fn draw_help(frame: &mut Frame<'_>, theme: &Theme) {
+    let area = frame.area();
+    let room = usize::from(area.height.saturating_sub(2)).max(1);
+
+    // Whole sections go into a column until the next one would not fit.
+    let mut columns: Vec<Vec<&HelpSection>> = vec![Vec::new()];
+    let mut used = 0;
+    for section in HELP {
+        let height = section.entries.len() + 2;
+        if used > 0 && used + height - 1 > room {
+            columns.push(Vec::new());
+            used = 0;
+        }
+        columns
+            .last_mut()
+            .expect("starts with one column")
+            .push(section);
+        used += height;
+    }
+    // Each column is as wide as its own keys and descriptions.
+    let widths: Vec<(usize, usize)> = columns
+        .iter()
+        .map(|c| {
+            let entries = || c.iter().flat_map(|s| s.entries);
+            let keys = entries().map(|e| e.keys.chars().count()).max().unwrap_or(0);
+            let does = entries().map(|e| e.does.chars().count()).max().unwrap_or(0);
+            (keys, keys + 2 + does)
+        })
+        .collect();
+    let gap = 2;
+    let content: usize = widths.iter().map(|w| w.1).sum::<usize>() + gap * (columns.len() - 1);
+    let tallest = columns
+        .iter()
+        .map(|c| {
+            c.iter()
+                .map(|s| s.entries.len() + 2)
+                .sum::<usize>()
+                .saturating_sub(1)
+        })
+        .max()
+        .unwrap_or(0);
+    let width = u16::try_from(content + 2)
+        .unwrap_or(u16::MAX)
+        .min(area.width);
+    let height = u16::try_from(tallest + 2)
+        .unwrap_or(u16::MAX)
+        .min(area.height);
+    let popup = Rect::new(
+        area.x + (area.width - width) / 2,
+        area.y + (area.height - height) / 2,
+        width,
+        height,
+    );
+    frame.render_widget(Clear, popup);
+    let block = Block::bordered()
+        .title(Span::styled(
+            " keys \u{2014} any key closes ",
+            Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+        ))
+        .border_style(Style::new().fg(theme.accent))
+        .style(base(theme));
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+    let slots = Layout::horizontal(
+        widths
+            .iter()
+            .map(|w| Constraint::Length(u16::try_from(w.1).unwrap_or(u16::MAX))),
+    )
+    .spacing(u16::try_from(gap).unwrap_or(2))
+    .split(inner);
+    for ((sections, (key_width, _)), slot) in columns.iter().zip(&widths).zip(slots.iter()) {
+        let lines: Vec<Line<'_>> = sections
+            .iter()
+            .flat_map(|s| help_lines(s, *key_width, theme))
+            .collect();
+        frame.render_widget(Paragraph::new(lines).style(base(theme)), *slot);
+    }
 }
 
 /// Mix `over` into `base`, `pct` percent of the way. Colours that are not RGB
@@ -367,6 +467,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
 
     let line = status_line(app, theme, pending);
     frame.render_widget(Paragraph::new(line).style(base(theme)), status);
+    if app.help() {
+        draw_help(frame, theme);
+    }
 }
 
 /// Draw the multi-select.
@@ -441,6 +544,9 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pendin
         Line::from(spans)
     };
     frame.render_widget(Paragraph::new(line).style(base(theme)), status);
+    if select.help() {
+        draw_help(frame, theme);
+    }
 }
 
 #[cfg(test)]
@@ -589,9 +695,8 @@ mod tests {
     fn the_remote_hints_offer_d_and_fit_80_columns() {
         assert!(REMOTE_HINTS.contains("d remove"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("n new"), "{REMOTE_HINTS}");
-        assert!(REMOTE_HINTS.contains("p promote"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("o once"), "{REMOTE_HINTS}");
-        assert!(REMOTE_HINTS.contains("h/l col"), "{REMOTE_HINTS}");
+        assert!(REMOTE_HINTS.contains("? help"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("s sort"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("A scan"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("/ i search"), "{REMOTE_HINTS}");
@@ -748,7 +853,7 @@ mod tests {
     fn the_key_hints_name_both_search_keys_and_fit_80_columns() {
         for hints in [HINTS, SELECT_HINTS] {
             assert!(hints.contains("/ i search"), "{hints}");
-            assert!(hints.contains("h/l col"), "{hints}");
+            assert!(hints.contains("? help"), "{hints}");
             assert!(hints.chars().count() <= 80, "{hints}");
         }
     }
@@ -882,5 +987,38 @@ mod tests {
             "{lines:?}"
         );
         assert!(lines.iter().all(|l| !l.contains("filter")), "{lines:?}");
+    }
+
+    #[test]
+    fn the_help_shows_every_key_at_80_by_24_and_leaves_the_list_behind_it() {
+        let mut app = App::new(vec![remote("a", "https://h/a", &[])]);
+        let theme = Theme::from(ThemeName::default());
+        step(&mut app, &[Action::Help]);
+        assert!(app.help());
+        let lines = screen(80, 24, |f| draw(f, &app, &theme, ""));
+        let all = lines.join("\n");
+        for section in HELP {
+            assert!(all.contains(section.title), "{}\n{all}", section.title);
+            for entry in section.entries {
+                assert!(all.contains(entry.keys), "{}\n{all}", entry.keys);
+                assert!(all.contains(entry.does), "{}\n{all}", entry.does);
+            }
+        }
+        assert!(lines.iter().all(|l| l.chars().count() <= 80));
+    }
+
+    #[test]
+    fn the_help_is_over_the_add_picker_too() {
+        let mut s = Select::new(vec![Row {
+            cells: vec!["x".into()],
+            name: "x".into(),
+            url: "u".into(),
+            source: String::new(),
+            have: false,
+        }]);
+        s.update(Action::Help);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(80, 24, |f| draw_select(f, &s, &theme, ""));
+        assert!(lines.join("\n").contains("any key closes"));
     }
 }

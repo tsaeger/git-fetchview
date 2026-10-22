@@ -42,6 +42,8 @@ pub struct Select {
     have: Vec<bool>,
     checked: BTreeSet<usize>,
     typing: bool,
+    /// The key help is showing; the next key closes it.
+    help: bool,
     viewport: usize,
     /// Visible position where the highlight started; the cursor is its other end.
     anchor: Option<usize>,
@@ -68,6 +70,7 @@ impl Select {
             have,
             checked: BTreeSet::new(),
             typing: false,
+            help: false,
             viewport: 10,
             anchor: None,
         }
@@ -82,11 +85,19 @@ impl Select {
     /// Which keymap is in force.
     #[must_use]
     pub fn mode(&self) -> Mode {
-        if self.typing {
+        if self.help {
+            Mode::Help
+        } else if self.typing {
             Mode::Typing
         } else {
             Mode::Normal
         }
+    }
+
+    /// True while the key help is showing.
+    #[must_use]
+    pub fn help(&self) -> bool {
+        self.help
     }
 
     /// True while a search is being typed.
@@ -144,6 +155,10 @@ impl Select {
         if matches!(action, Action::Quit | Action::Interrupt) {
             return SelectFlow::Quit;
         }
+        if self.help {
+            self.help = false;
+            return SelectFlow::Continue;
+        }
         if self.typing {
             self.update_typing(action);
             return SelectFlow::Continue;
@@ -165,6 +180,7 @@ impl Select {
                 self.typing = true;
             }
             Action::Filter => self.typing = self.list.begin_column_edit(),
+            Action::Help => self.help = true,
             Action::Clear => self.list.clear(),
             Action::Sort => self.list.cycle_sort(),
             Action::ColumnPrev => self.list.move_column(-1),
@@ -511,6 +527,17 @@ mod tests {
         assert_eq!(s.update(Action::Enter), SelectFlow::Continue);
         assert!(!s.typing());
         assert_eq!(s.list().visible(), [2]);
+    }
+
+    #[test]
+    fn the_help_opens_and_any_key_closes_it_without_acting() {
+        let mut s = Select::new(rows());
+        s.update(Action::Help);
+        assert!(s.help());
+        assert_eq!(s.mode(), Mode::Help);
+        s.update(Action::Toggle);
+        assert!(!s.help());
+        assert_eq!(s.checked_count(), 0);
     }
 
     #[test]
