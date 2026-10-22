@@ -138,7 +138,7 @@ impl Select {
     /// Apply one action with the count typed before it.
     pub fn update_with(&mut self, command: Command) -> SelectFlow {
         let Command { action, count } = command;
-        if action == Action::Quit {
+        if matches!(action, Action::Quit | Action::Interrupt) {
             return SelectFlow::Quit;
         }
         if self.typing {
@@ -166,6 +166,7 @@ impl Select {
             Action::Enter => return SelectFlow::Done(self.checked.iter().copied().collect()),
             Action::Back
             | Action::Quit
+            | Action::Interrupt
             | Action::Char(_)
             | Action::Backspace
             | Action::ColumnPrev

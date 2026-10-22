@@ -103,9 +103,13 @@ flowchart LR
   multi-select that `add` uses. Both share `List`.
 - `List` owns the rows, the filter, the sort column and the cursor. Sorting
   never moves a row out of its group, and names compare naturally.
-- The event loop in `tui/mod.rs` calls a loader closure when a remote is
-  chosen. The closure runs `ls-remote` and applies the hide rules, so the state
-  machine stays free of I/O.
+- Choosing a remote does not block. `App::step` returns `Flow::Load`, and the
+  event loop in `tui/mod.rs` hands it to a worker thread that runs
+  `ls-remote` and applies the hide rules, so the state machine stays free of
+  I/O. The loop keeps redrawing a spinner and feeds the answer back with
+  `App::finish_load`. Every request has an id, so the answer to a cancelled
+  load is dropped. Cancelling sets a `git::Cancel` flag, and `Cmd::output_until`
+  kills the git process when it sees it.
 
 The mode decides how keys are read: normal, typing in the search box, or
 choosing a sort column.

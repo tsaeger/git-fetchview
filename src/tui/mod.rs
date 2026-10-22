@@ -10,12 +10,16 @@ pub mod select;
 pub mod theme;
 pub mod ui;
 
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
+use std::time::Duration;
+
 use ratatui::crossterm::event::{self, Event};
 
-use crate::error::Result;
-use crate::git::{self, Remote};
+use crate::error::{Error, Result};
+use crate::git::{self, Cancel, Remote};
 use crate::hide::{Hidden, Rule};
-use app::{App, Flow, Loaded, Selection};
+use app::{App, Flow, Load, Loaded, Selection};
 use keys::KeyParser;
 use select::{Row, Select, SelectFlow};
 use theme::{Theme, ThemeName};
@@ -53,37 +57,113 @@ fn list_rows(terminal: &ratatui::DefaultTerminal) -> Result<usize> {
     Ok(usize::from(terminal.size()?.height.saturating_sub(5)).max(1))
 }
 
+/// How often the spinner moves while refs are loading.
+const SPIN: Duration = Duration::from_millis(80);
+
+/// List the refs of `remote` and drop the ones other trees carry. The lists to
+/// hide are fetched on the first call and kept in `hidden` after that.
+fn list_refs(
+    remote: &Remote,
+    hide: &HideRefs,
+    hidden: &mut Option<Hidden>,
+    cancel: &Cancel,
+) -> Result<Loaded> {
+    let refs = git::remote_refs(&remote.url, cancel)?;
+    if hidden.is_none() {
+        let loaded = Hidden::load_real(&hide.rules, hide.refresh, cancel);
+        if cancel.is_cancelled() {
+            // Its fetches were cut short, so it would hide nothing. Do not keep it.
+            return Err(Error::Cancelled {
+                command: format!("hidden refs for {}", remote.name),
+            });
+        }
+        *hidden = Some(loaded);
+    }
+    let hidden = hidden.get_or_insert_with(Hidden::default);
+    let (refs, count) = hidden.apply(&remote.url, refs);
+    Ok(Loaded {
+        refs,
+        hidden: count,
+        note: hidden.note.take(),
+    })
+}
+
+/// Lists refs on its own thread, so the screen keeps redrawing and a slow
+/// remote can be given up on.
+struct Worker {
+    requests: Sender<(Load, Cancel)>,
+    answers: Receiver<(u64, Result<Loaded>)>,
+    running: Option<Cancel>,
+}
+
+impl Worker {
+    fn spawn(hide: HideRefs) -> Self {
+        let (requests, wanted) = mpsc::channel::<(Load, Cancel)>();
+        let (reply, answers) = mpsc::channel();
+        thread::spawn(move || {
+            let mut hidden: Option<Hidden> = None;
+            while let Ok((load, cancel)) = wanted.recv() {
+                let result = list_refs(&load.remote, &hide, &mut hidden, &cancel);
+                if reply.send((load.id, result)).is_err() {
+                    break;
+                }
+            }
+        });
+        Self {
+            requests,
+            answers,
+            running: None,
+        }
+    }
+
+    fn start(&mut self, load: Load) {
+        let cancel = Cancel::default();
+        self.running = Some(cancel.clone());
+        // The thread only ends when this struct goes away.
+        let _ = self.requests.send((load, cancel));
+    }
+
+    fn cancel(&mut self) {
+        if let Some(cancel) = self.running.take() {
+            cancel.cancel();
+        }
+    }
+}
+
 fn run(
     terminal: &mut ratatui::DefaultTerminal,
     app: &mut App,
     theme: &Theme,
     hide: &HideRefs,
 ) -> Result<Option<Selection>> {
-    // Loaded on the first refs list, then kept for the rest of the session.
-    let mut hidden: Option<Hidden> = None;
-    let mut load = |remote: &Remote| {
-        let refs = git::remote_refs(&remote.url)?;
-        let hidden = hidden.get_or_insert_with(|| Hidden::load_real(&hide.rules, hide.refresh));
-        let (refs, count) = hidden.apply(&remote.url, refs);
-        Ok(Loaded {
-            refs,
-            hidden: count,
-            note: hidden.note.take(),
-        })
-    };
+    let mut worker = Worker::spawn(hide.clone());
     let mut parser = KeyParser::default();
     loop {
+        while let Ok((id, result)) = worker.answers.try_recv() {
+            app.finish_load(id, result);
+        }
         app.set_viewport(list_rows(terminal)?);
         terminal.draw(|frame| ui::draw(frame, app, theme, &parser.pending()))?;
+        // Keys wait forever, except while loading, when the spinner and the
+        // answer need a look every so often.
+        if app.loading().is_some() && !event::poll(SPIN)? {
+            app.tick();
+            continue;
+        }
         let Event::Key(key) = event::read()? else {
             continue;
         };
         let Some(command) = parser.feed(key, app.mode()) else {
             continue;
         };
-        match app.update_with(command, &mut load) {
+        match app.step(command) {
             Flow::Continue => {}
-            Flow::Quit => return Ok(None),
+            Flow::Load(load) => worker.start(load),
+            Flow::CancelLoad => worker.cancel(),
+            Flow::Quit => {
+                worker.cancel();
+                return Ok(None);
+            }
             Flow::Done(selection) => return Ok(Some(selection)),
         }
     }

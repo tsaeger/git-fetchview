@@ -51,6 +51,8 @@ pub enum Action {
     Back,
     /// Quit.
     Quit,
+    /// Ctrl-C: quits, except while a load is running, where it cancels it.
+    Interrupt,
     /// Start editing the search box.
     Search,
     /// Clear the search / filter.
@@ -185,7 +187,7 @@ pub fn map(key: KeyEvent, mode: Mode) -> Option<Action> {
     }
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         return match (mode, key.code) {
-            (_, KeyCode::Char('c')) => Some(Action::Quit),
+            (_, KeyCode::Char('c')) => Some(Action::Interrupt),
             (Mode::Typing, _) => None,
             (_, KeyCode::Char('d')) => Some(Action::HalfPageDown),
             (_, KeyCode::Char('u')) => Some(Action::HalfPageUp),
@@ -409,7 +411,10 @@ mod tests {
             cmd(Action::PageUp, None)
         );
         assert_eq!(p.feed(ctrl('d'), Mode::Typing), None);
-        assert_eq!(p.feed(ctrl('c'), Mode::Typing), cmd(Action::Quit, None));
+        assert_eq!(
+            p.feed(ctrl('c'), Mode::Typing),
+            cmd(Action::Interrupt, None)
+        );
     }
 
     #[test]
@@ -534,9 +539,10 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_c_always_quits() {
+    fn ctrl_c_is_an_interrupt_in_every_mode() {
         let k = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-        assert_eq!(map(k, Mode::Typing), Some(Action::Quit));
-        assert_eq!(map(k, Mode::Normal), Some(Action::Quit));
+        for mode in [Mode::Typing, Mode::Normal, Mode::Sort] {
+            assert_eq!(map(k, mode), Some(Action::Interrupt));
+        }
     }
 }

@@ -7,10 +7,43 @@
 //! so the cut-and-paste trail can never drift from what the tool does.
 
 use std::fmt;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
 
 use crate::error::{Error, Result};
+
+/// A flag one thread sets to stop a command another thread is running.
+#[derive(Debug, Clone, Default)]
+pub struct Cancel(Arc<AtomicBool>);
+
+impl Cancel {
+    /// Ask whoever holds a clone of this to stop.
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    /// Whether [`Cancel::cancel`] has been called.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+/// Read a pipe to the end on its own thread, so a full pipe never blocks the
+/// child while the caller waits for it.
+fn drain(pipe: Option<impl Read + Send + 'static>) -> thread::JoinHandle<Vec<u8>> {
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        if let Some(mut pipe) = pipe {
+            let _ = pipe.read_to_end(&mut bytes);
+        }
+        bytes
+    })
+}
 
 /// A command line that can be both printed and run.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,6 +219,54 @@ impl Cmd {
         })
     }
 
+    /// Like [`Cmd::output`], but stop and kill the command when `cancel` is
+    /// set. Another thread sets it, so a slow remote can be given up on.
+    ///
+    /// # Errors
+    /// [`Error::Spawn`], [`Error::Failed`], [`Error::NotUtf8`] or
+    /// [`Error::Cancelled`].
+    pub fn output_until(&self, cancel: &Cancel) -> Result<String> {
+        let spawn_err = |source| Error::Spawn {
+            command: self.to_string(),
+            source,
+        };
+        let mut child = Command::new(self.program)
+            .args(&self.args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(spawn_err)?;
+        let stdout = drain(child.stdout.take());
+        let stderr = drain(child.stderr.take());
+        let status = loop {
+            if let Some(status) = child.try_wait().map_err(spawn_err)? {
+                break status;
+            }
+            if cancel.is_cancelled() {
+                // The readers are left to finish by themselves: a helper that
+                // git started may still hold the pipes open.
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(Error::Cancelled {
+                    command: self.to_string(),
+                });
+            }
+            thread::sleep(Duration::from_millis(10));
+        };
+        let stdout = stdout.join().unwrap_or_default();
+        if !status.success() {
+            return Err(Error::Failed {
+                command: self.to_string(),
+                status,
+                stderr: String::from_utf8_lossy(&stderr.join().unwrap_or_default()).into_owned(),
+            });
+        }
+        String::from_utf8(stdout).map_err(|_| Error::NotUtf8 {
+            command: self.to_string(),
+        })
+    }
+
     /// Run a viewer with inherited stdio. Any exit status is fine (`fzf`
     /// exits 130 on Esc) except 127, which means the command was not found.
     ///
@@ -338,9 +419,9 @@ pub fn configured_remotes() -> Result<Vec<Remote>> {
 /// List the refs a remote advertises. `remote` is a name or a URL.
 ///
 /// # Errors
-/// Command failures, or [`Error::NoRefs`].
-pub fn remote_refs(remote: &str) -> Result<Vec<RemoteRef>> {
-    let refs = parse_ls_remote(&Cmd::ls_remote(remote).output()?);
+/// Command failures, [`Error::Cancelled`], or [`Error::NoRefs`].
+pub fn remote_refs(remote: &str, cancel: &Cancel) -> Result<Vec<RemoteRef>> {
+    let refs = parse_ls_remote(&Cmd::ls_remote(remote).output_until(cancel)?);
     if refs.is_empty() {
         Err(Error::NoRefs(remote.to_owned()))
     } else {
@@ -351,6 +432,45 @@ pub fn remote_refs(remote: &str) -> Result<Vec<RemoteRef>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_until_returns_the_output_of_a_finished_command() {
+        let out = Cmd::shell("printf hello").output_until(&Cancel::default());
+        assert_eq!(out.unwrap(), "hello");
+    }
+
+    #[test]
+    fn output_until_reports_a_failing_command_like_output() {
+        let err = Cmd::shell("echo oops >&2; exit 3")
+            .output_until(&Cancel::default())
+            .unwrap_err();
+        assert!(matches!(err, Error::Failed { .. }), "{err}");
+        assert!(err.to_string().contains("oops"), "{err}");
+    }
+
+    #[test]
+    fn output_until_does_not_stall_on_a_large_output() {
+        // More than a pipe buffer, so the reader has to keep up.
+        let out = Cmd::shell("head -c 300000 /dev/zero | tr '\\0' x")
+            .output_until(&Cancel::default())
+            .unwrap();
+        assert_eq!(out.len(), 300_000);
+    }
+
+    #[test]
+    fn cancelling_stops_a_slow_command_promptly() {
+        let cancel = Cancel::default();
+        let flag = cancel.clone();
+        let stopper = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            flag.cancel();
+        });
+        let start = std::time::Instant::now();
+        let err = Cmd::new("sleep", ["30"]).output_until(&cancel).unwrap_err();
+        stopper.join().unwrap();
+        assert!(matches!(err, Error::Cancelled { .. }), "{err}");
+        assert!(start.elapsed() < std::time::Duration::from_secs(5));
+    }
 
     #[test]
     fn quotes_only_when_needed() {

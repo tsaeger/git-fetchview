@@ -23,6 +23,10 @@ The README covers the first steps. This is the reference.
 | `r`                     | reverse the current order                   |
 | `q`                     | quit, from anywhere                         |
 
+While a remote's refs are loading, the status line shows a spinner and the
+remote's name. `Esc`, `h` or `Ctrl-C` give up, kill the `git ls-remote`, and
+return to the remote list. A slow or stalled remote never freezes the screen.
+
 Keys typed but not finished (`5`, `g`) show at the left of the status line, and `Esc` drops them. The search box is always on the top line and shows how many rows match. While you edit it, characters are text (so `q` types a `q`) and the list filters as you type. `Esc` or `Enter` leaves the box and the filter stays; `c` clears it. In sort mode the status line shows the columns (`default`, `label`, `url`, `tags`; refs have `default` and `label`) with the active one in brackets, and the list re-sorts as you move. Labels sort naturally, so `v6.9` comes before `v6.10`, and `r` after `s` puts the newest tags first. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. Moving the sort column keeps the cursor on the same row, and `r` puts it at the top of the list.
 
 ## Collecting remotes

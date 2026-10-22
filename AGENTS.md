@@ -32,7 +32,7 @@ equivalent plain commands as a cut-and-paste trail. Linux and macOS are the prim
 
 - Follow vim/neovim: `gg`/`G` top and bottom, counts (`5j`, `5G`), `Ctrl-d/u/f/b` paging. A lone `g` is a prefix, not a motion. `Esc` first cancels pending input, and only then drops out.
 - `hjkl` and arrows both navigate. `Enter`/`l`/`→` drops in (and selects, advancing to the next level); `Esc`/`h`/`←` drops out.
-- `Esc` at the top level does **not** exit. `q` exits from any level.
+- `Esc` at the top level does **not** exit. `q` exits from any level. While a remote's refs load, `Esc`/`h` or Ctrl-C give up and return to the remote list (Ctrl-C quits when nothing is loading).
 - `/` or `i` edits the search box on the top line (substring now; regex later, in `tui/list.rs::matches`). `c` clears it. `s` enters sort mode, where `h`/`l` move the sort column and `r` reverses; `r` also works outside it. Sorting never moves a row out of its group, and compares names naturally (`v6.9` before `v6.10`).
 - While typing a search, characters are text (so `q` types a `q`); `Enter` or `Esc` leaves the box and the filter stays; `c` clears it.
 - The single keymap is `tui/keys.rs` (`map` for single keys, `KeyParser` for counts and `gg`); change keys there, not in the state machine.

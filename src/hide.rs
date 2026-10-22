@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use crate::error::Result;
-use crate::git::{self, Cmd, RemoteRef};
+use crate::git::{self, Cancel, Cmd, RemoteRef};
 use crate::remotes::entry::validate_url;
 
 /// Config key: repositories whose refs are hidden. Multi-valued.
@@ -170,10 +170,13 @@ impl Hidden {
         Ok(PathBuf::from(dir.trim()).join("fetchview").join("hidden"))
     }
 
-    /// [`Hidden::load`] against the real cache and `git ls-remote`.
+    /// [`Hidden::load`] against the real cache and `git ls-remote`. When
+    /// `cancel` is set the fetches stop, and the result should be thrown away.
     #[must_use]
-    pub fn load_real(rules: &[Rule], force: bool) -> Self {
-        let fetch = &mut |rule: &Rule| Cmd::ls_remote_patterns(&rule.url, &rule.patterns).output();
+    pub fn load_real(rules: &[Rule], force: bool, cancel: &Cancel) -> Self {
+        let fetch = &mut |rule: &Rule| {
+            Cmd::ls_remote_patterns(&rule.url, &rule.patterns).output_until(cancel)
+        };
         match Self::cache_dir() {
             Ok(dir) => Self::load(rules, &dir, SystemTime::now(), force, fetch),
             Err(e) => Self {

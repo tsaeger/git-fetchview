@@ -52,6 +52,13 @@ pub enum Error {
     #[error("this repository has no remotes")]
     NoRemotes,
 
+    /// A command was stopped on request before it finished.
+    #[error("`{command}` was cancelled")]
+    Cancelled {
+        /// The command line, as it would be pasted into a shell.
+        command: String,
+    },
+
     /// The chosen remote advertises no refs.
     #[error("remote `{0}` has no refs")]
     NoRefs(String),

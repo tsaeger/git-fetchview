@@ -15,6 +15,7 @@ use crate::tui::select::Select;
 use crate::tui::theme::Theme;
 
 const HINTS: &str = "j/k move  l/enter open  h/esc back  / i search  c clear  s sort  q quit";
+const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const SORT_HINTS: &str = " h/l column  r reverse  s/esc done";
 const SELECT_HINTS: &str = "space toggle  a all  enter write  / i search  c clear  s sort  q quit";
 
@@ -260,7 +261,16 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
     };
     render_table(frame, body, title, headers, app.list(), rows, theme);
 
-    let line = if let Some(err) = app.error() {
+    let line = if let Some(name) = app.loading() {
+        let frame = SPINNER[app.spinner() % SPINNER.len()];
+        Line::from(vec![
+            Span::styled(
+                format!("{frame} loading {name}…  "),
+                Style::new().fg(theme.accent),
+            ),
+            Span::styled("esc cancel", Style::new().fg(theme.dim)),
+        ])
+    } else if let Some(err) = app.error() {
         Line::from(Span::styled(err.to_owned(), Style::new().fg(theme.error)))
     } else if app.typing() {
         typing_hints(theme)
@@ -450,6 +460,21 @@ mod tests {
             .find("merge");
         assert_eq!(tags_at, lines[2].find("tags"));
         assert!(lines[2].contains("name") && lines[2].contains("url"));
+    }
+
+    #[test]
+    fn the_status_line_says_what_is_loading_and_how_to_stop_it() {
+        let mut app = App::new(vec![remote("origin", "https://h/o", &[])]);
+        app.step(crate::tui::keys::Command::from(Action::Enter));
+        let theme = Theme::from(ThemeName::default());
+        let first = screen(60, 6, |f| draw(f, &app, &theme, ""));
+        let status = &first[5];
+        assert!(status.contains("loading origin"), "{status:?}");
+        assert!(status.contains("esc cancel"), "{status:?}");
+        // The spinner moves.
+        app.tick();
+        let second = screen(60, 6, |f| draw(f, &app, &theme, ""));
+        assert_ne!(first[5], second[5]);
     }
 
     #[test]

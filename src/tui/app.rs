@@ -24,8 +24,22 @@ pub enum Flow {
     Continue,
     /// Leave without a selection.
     Quit,
+    /// A remote was chosen. List its refs, then call [`App::finish_load`]
+    /// with the same id.
+    Load(Load),
+    /// Stop the load that was running; the remote list stays up.
+    CancelLoad,
     /// A remote and ref were chosen.
     Done(Selection),
+}
+
+/// A request to list the refs of a remote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Load {
+    /// Identifies this request, so a late answer to a cancelled one is dropped.
+    pub id: u64,
+    /// The remote to list.
+    pub remote: Remote,
 }
 
 /// The final choice.
@@ -59,7 +73,8 @@ impl From<Vec<RemoteRef>> for Loaded {
     }
 }
 
-/// Fetches the refs of a remote (`git ls-remote`).
+/// Fetches the refs of a remote (`git ls-remote`), inline. The event loop does
+/// this on another thread instead; this is for tests and simple callers.
 pub type Loader<'a> = dyn FnMut(&Remote) -> Result<Loaded> + 'a;
 
 fn remote_cells(r: &Remote) -> Vec<String> {
@@ -82,6 +97,10 @@ pub struct App {
     notice: Option<String>,
     viewport: usize,
     chosen: Option<usize>,
+    /// The load in flight: its id and the remote's index.
+    loading: Option<(u64, usize)>,
+    next_load: u64,
+    spinner: usize,
 }
 
 impl App {
@@ -112,6 +131,9 @@ impl App {
             notice: None,
             viewport: 10,
             chosen: None,
+            loading: None,
+            next_load: 0,
+            spinner: 0,
         }
     }
 
@@ -120,6 +142,23 @@ impl App {
     pub fn with_notice(mut self, notice: Option<String>) -> Self {
         self.notice = notice;
         self
+    }
+
+    /// Name of the remote whose refs are being listed, if a load is running.
+    #[must_use]
+    pub fn loading(&self) -> Option<&str> {
+        self.loading.map(|(_, i)| self.remotes[i].name.as_str())
+    }
+
+    /// Which frame of the loading spinner to draw.
+    #[must_use]
+    pub fn spinner(&self) -> usize {
+        self.spinner
+    }
+
+    /// Advance the spinner. Call it on a timer while [`App::loading`] is set.
+    pub fn tick(&mut self) {
+        self.spinner = self.spinner.wrapping_add(1);
     }
 
     /// The pending notice, if any.
@@ -197,17 +236,38 @@ impl App {
         self.viewport = rows.max(1);
     }
 
-    /// Apply one action.
+    /// Apply one action, listing refs inline if it asks for them.
     pub fn update(&mut self, action: Action, load: &mut Loader<'_>) -> Flow {
         self.update_with(Command::from(action), load)
     }
 
-    /// Apply one action with the count typed before it.
+    /// Apply one action with the count typed before it, listing refs inline
+    /// if it asks for them.
     pub fn update_with(&mut self, command: Command, load: &mut Loader<'_>) -> Flow {
+        match self.step(command) {
+            Flow::Load(request) => {
+                let result = load(&request.remote);
+                self.finish_load(request.id, result);
+                Flow::Continue
+            }
+            flow => flow,
+        }
+    }
+
+    /// Apply one action with the count typed before it. A remote being chosen
+    /// comes back as [`Flow::Load`], and the answer goes to
+    /// [`App::finish_load`].
+    pub fn step(&mut self, command: Command) -> Flow {
         let Command { action, count } = command;
         self.error = None;
         self.notice = None;
         if action == Action::Quit {
+            return Flow::Quit;
+        }
+        if self.loading.is_some() {
+            return self.step_loading(action);
+        }
+        if action == Action::Interrupt {
             return Flow::Quit;
         }
         if self.typing {
@@ -228,8 +288,9 @@ impl App {
             Action::Sort => self.sorting = true,
             Action::Reverse => self.list_mut().toggle_reverse(),
             Action::Back => self.back(),
-            Action::Enter => return self.enter(load),
+            Action::Enter => return self.enter(),
             Action::Quit
+            | Action::Interrupt
             | Action::Char(_)
             | Action::Backspace
             | Action::Toggle
@@ -246,6 +307,59 @@ impl App {
             | Action::PageUp => {}
         }
         Flow::Continue
+    }
+
+    /// While refs are loading only `Esc`, `h` and Ctrl-C do anything (they
+    /// give up). `q` quits as everywhere else, and other keys are ignored.
+    fn step_loading(&mut self, action: Action) -> Flow {
+        if matches!(action, Action::Back | Action::Interrupt) {
+            self.loading = None;
+            Flow::CancelLoad
+        } else {
+            Flow::Continue
+        }
+    }
+
+    /// Take the answer to a [`Flow::Load`]. An answer to a load that was
+    /// cancelled, or replaced by a newer one, is dropped.
+    pub fn finish_load(&mut self, id: u64, result: Result<Loaded>) {
+        let Some((current, index)) = self.loading else {
+            return;
+        };
+        if current != id {
+            return;
+        }
+        self.loading = None;
+        match result {
+            Ok(loaded) if loaded.refs.is_empty() && loaded.hidden == 0 => {
+                self.error = Some(Error::NoRefs(self.remotes[index].name.clone()).to_string());
+            }
+            Ok(Loaded { refs, hidden, note }) => {
+                let cells = refs
+                    .iter()
+                    .map(|r| vec![r.name.clone(), r.oid.get(..7).unwrap_or(&r.oid).to_owned()])
+                    .collect();
+                let keys = refs
+                    .iter()
+                    .map(|r| SortKeys {
+                        name: r.name.clone(),
+                        url: r.name.clone(),
+                        tags: String::new(),
+                        group: 0,
+                    })
+                    .collect();
+                self.ref_list = List::with_cells(cells, keys)
+                    .with_cycle(vec![SortOrder::Default, SortOrder::Label]);
+                self.refs = refs;
+                self.hidden = hidden;
+                if note.is_some() {
+                    self.notice = note;
+                }
+                self.chosen = Some(index);
+                self.level = Level::Refs;
+            }
+            Err(e) => self.error = Some(e.to_string()),
+        }
     }
 
     fn update_sorting(&mut self, action: Action) {
@@ -280,46 +394,20 @@ impl App {
         }
     }
 
-    fn enter(&mut self, load: &mut Loader<'_>) -> Flow {
+    fn enter(&mut self) -> Flow {
         let Some(index) = self.list().selected() else {
             return Flow::Continue;
         };
         match self.level {
             Level::Remotes => {
-                match load(&self.remotes[index]) {
-                    Ok(loaded) if loaded.refs.is_empty() && loaded.hidden == 0 => {
-                        self.error =
-                            Some(Error::NoRefs(self.remotes[index].name.clone()).to_string());
-                    }
-                    Ok(Loaded { refs, hidden, note }) => {
-                        let cells = refs
-                            .iter()
-                            .map(|r| {
-                                vec![r.name.clone(), r.oid.get(..7).unwrap_or(&r.oid).to_owned()]
-                            })
-                            .collect();
-                        let keys = refs
-                            .iter()
-                            .map(|r| SortKeys {
-                                name: r.name.clone(),
-                                url: r.name.clone(),
-                                tags: String::new(),
-                                group: 0,
-                            })
-                            .collect();
-                        self.ref_list = List::with_cells(cells, keys)
-                            .with_cycle(vec![SortOrder::Default, SortOrder::Label]);
-                        self.refs = refs;
-                        self.hidden = hidden;
-                        if note.is_some() {
-                            self.notice = note;
-                        }
-                        self.chosen = Some(index);
-                        self.level = Level::Refs;
-                    }
-                    Err(e) => self.error = Some(e.to_string()),
-                }
-                Flow::Continue
+                let id = self.next_load;
+                self.next_load += 1;
+                self.loading = Some((id, index));
+                self.spinner = 0;
+                Flow::Load(Load {
+                    id,
+                    remote: self.remotes[index].clone(),
+                })
             }
             Level::Refs => {
                 let chosen = &self.remotes[self.chosen.unwrap_or_default()];
@@ -654,5 +742,104 @@ mod tests {
         a.update(Action::Enter, &mut fail);
         assert_eq!(a.level(), Level::Remotes);
         assert!(a.error().is_some());
+    }
+
+    fn refs_of(names: &[&str]) -> Loaded {
+        Loaded::from(
+            names
+                .iter()
+                .map(|n| RemoteRef {
+                    name: (*n).into(),
+                    oid: "0123456789abcdef".into(),
+                })
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    fn load_request(flow: Flow) -> Load {
+        match flow {
+            Flow::Load(load) => load,
+            other => panic!("expected a load, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn enter_on_a_remote_asks_for_a_load_and_waits_for_it() {
+        let mut a = app();
+        let load = load_request(a.step(Command::from(Action::Enter)));
+        assert_eq!(load.remote.name, "origin");
+        assert_eq!(a.level(), Level::Remotes);
+        assert_eq!(a.loading(), Some("origin"));
+        a.finish_load(load.id, Ok(refs_of(&["refs/heads/main"])));
+        assert_eq!(a.level(), Level::Refs);
+        assert_eq!(a.loading(), None);
+    }
+
+    #[test]
+    fn esc_while_loading_cancels_and_a_late_result_is_ignored() {
+        let mut a = app();
+        let load = load_request(a.step(Command::from(Action::Enter)));
+        assert_eq!(a.step(Command::from(Action::Back)), Flow::CancelLoad);
+        assert_eq!(a.loading(), None);
+        a.finish_load(load.id, Ok(refs_of(&["refs/heads/main"])));
+        assert_eq!(a.level(), Level::Remotes);
+    }
+
+    #[test]
+    fn ctrl_c_cancels_a_load_and_quits_otherwise() {
+        let mut a = app();
+        a.step(Command::from(Action::Enter));
+        assert_eq!(a.step(Command::from(Action::Interrupt)), Flow::CancelLoad);
+        assert_eq!(a.step(Command::from(Action::Interrupt)), Flow::Quit);
+    }
+
+    #[test]
+    fn q_still_quits_while_loading() {
+        let mut a = app();
+        a.step(Command::from(Action::Enter));
+        assert_eq!(a.step(Command::from(Action::Quit)), Flow::Quit);
+    }
+
+    #[test]
+    fn keys_do_nothing_while_loading() {
+        let mut a = app();
+        a.step(Command::from(Action::Enter));
+        for action in [Action::Down, Action::Search, Action::Sort, Action::Enter] {
+            assert_eq!(a.step(Command::from(action)), Flow::Continue);
+        }
+        assert_eq!(a.list().cursor(), 0);
+        assert!(!a.typing());
+        assert_eq!(a.loading(), Some("origin"));
+    }
+
+    #[test]
+    fn a_failed_load_shows_its_error_and_stops_waiting() {
+        let mut a = app();
+        let load = load_request(a.step(Command::from(Action::Enter)));
+        a.finish_load(load.id, Err(Error::NoRefs("origin".into())));
+        assert_eq!(a.loading(), None);
+        assert_eq!(a.level(), Level::Remotes);
+        assert!(a.error().is_some_and(|e| e.contains("no refs")));
+    }
+
+    #[test]
+    fn a_result_for_an_older_load_is_ignored() {
+        let mut a = app();
+        let first = load_request(a.step(Command::from(Action::Enter)));
+        a.step(Command::from(Action::Back));
+        let second = load_request(a.step(Command::from(Action::Enter)));
+        assert_ne!(first.id, second.id);
+        a.finish_load(first.id, Ok(refs_of(&["refs/heads/old"])));
+        assert_eq!(a.level(), Level::Remotes);
+        a.finish_load(second.id, Ok(refs_of(&["refs/heads/new"])));
+        assert_eq!(a.level(), Level::Refs);
+    }
+
+    #[test]
+    fn the_spinner_advances_on_each_tick() {
+        let mut a = app();
+        let before = a.spinner();
+        a.tick();
+        assert_ne!(a.spinner(), before);
     }
 }
