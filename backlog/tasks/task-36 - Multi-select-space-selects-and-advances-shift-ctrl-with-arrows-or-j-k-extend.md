@@ -4,7 +4,9 @@ title: 'Multi-select: space selects and advances, shift/ctrl with arrows or j/k 
 status: To Do
 assignee: []
 created_date: '2026-10-22T14:57:00Z'
-labels: []
+updated_date: '2026-10-22T19:31:00Z'
+labels:
+  - prototype
 dependencies: []
 ordinal: 24000
 ---
@@ -17,9 +19,19 @@ In the multi-select (tui::select), space toggles the row under the cursor. Chang
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 space selects the current row and advances; space on a selected row deselects it and advances
-- [ ] #2 shift with arrows and j/k, and ctrl with arrows and j/k, do what the prototype settled on
-- [ ] #3 Which key combinations arrive in the supported terminals is recorded, and unreliable ones are not promised
+- [ ] #1 space selects or deselects the current row and advances
+- [ ] #2 shift with arrows and J/K moves the cursor and highlights anchor..cursor without selecting; space toggles the whole highlight by the anchor row's state (selected: deselect all, else select all), the cursor lands after the range; a plain move or Esc drops the highlight
+- [ ] #3 ctrl is not used. Which shift combinations arrive in Terminal.app, iTerm2, kitty and a Linux console is recorded, and unreliable ones are not promised
 - [ ] #4 The behavior is covered by unit tests in select.rs and keys.rs
 - [ ] #5 The status-line hints, README, docs/usage.md and AGENTS.md describe the new keys
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Key probe, iTerm2 (TERM=xterm-256color), crossterm 0.29, default mode: shift+down and shift+up arrive as Down/Up with SHIFT; shift+j and shift+k arrive as Char('J')/Char('K') with SHIFT; shift+space arrives as a plain space with no SHIFT (so the highlight must be its own state, as designed). Still to probe: Terminal.app, kitty, Linux console.
+
+Key probe, Terminal.app (TERM=xterm-256color), default mode: shift+down and shift+up arrive as plain Down/Up with NO modifier, so they cannot be told from the unshifted arrows. shift+j/shift+k arrive as Char('J')/Char('K') with SHIFT; shift+space is a plain space. So J/K is the only combination that works in both iTerm2 and Terminal.app: the hints and docs promise J/K, and shift+arrows is a bonus where the terminal reports it (iTerm2), not promised.
+
+Key probe, Ghostty (TERM=xterm-ghostty), default mode: same as iTerm2. shift+down/up arrive with SHIFT, shift+j/k as Char('J')/Char('K') with SHIFT, shift+space is a plain space. Not probed: kitty, Linux console.
+<!-- SECTION:NOTES:END -->
