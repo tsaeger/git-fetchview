@@ -1,7 +1,7 @@
 ---
 id: TASK-18
 title: Decide whether to pin the ubuntu runner
-status: Done
+status: In Progress
 assignee: []
 created_date: '2026-10-22T02:54:00Z'
 updated_date: '2026-10-22T03:26:00Z'
@@ -19,7 +19,7 @@ GitHub is moving the ubuntu-latest label to Ubuntu 26 (began October 19, 2026). 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 ci.yml states the choice in a comment
-- [x] #2 All jobs pass after the change
+- [ ] #2 All jobs pass after the change
 <!-- AC:END -->
 
 ## Implementation Notes
