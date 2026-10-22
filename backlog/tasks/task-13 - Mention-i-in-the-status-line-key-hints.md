@@ -1,9 +1,10 @@
 ---
 id: TASK-13
 title: Mention i in the status-line key hints
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T02:54:00Z'
+updated_date: '2026-10-22T03:26:00Z'
 labels: []
 dependencies: []
 ordinal: 2000
@@ -17,6 +18,6 @@ The HINTS status string still says '/ search'. The search box is also opened wit
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Both pickers' hints mention i
-- [ ] #2 A ui test checks the hint text and fits an 80-column terminal
+- [x] #1 Both pickers' hints mention i
+- [x] #2 A ui test checks the hint text and fits an 80-column terminal
 <!-- AC:END -->

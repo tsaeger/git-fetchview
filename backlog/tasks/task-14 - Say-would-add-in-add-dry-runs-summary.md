@@ -1,9 +1,10 @@
 ---
 id: TASK-14
 title: Say 'would add' in add --dry-run's summary
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T02:54:00Z'
+updated_date: '2026-10-22T03:26:00Z'
 labels: []
 dependencies: []
 ordinal: 3000
@@ -17,7 +18,7 @@ ordinal: 3000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A dry run's summary uses the conditional wording
-- [ ] #2 A normal run's summary is unchanged
-- [ ] #3 An integration test covers the dry-run wording
+- [x] #1 A dry run's summary uses the conditional wording
+- [x] #2 A normal run's summary is unchanged
+- [x] #3 An integration test covers the dry-run wording
 <!-- AC:END -->
