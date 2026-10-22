@@ -1,10 +1,10 @@
 ---
 id: TASK-19
 title: 'TUI: remove a collected remote from the picker'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T02:59:00Z'
-updated_date: '2026-10-22T03:02:00Z'
+updated_date: '2026-10-22T04:53:00Z'
 labels: []
 dependencies: []
 ordinal: 8000
@@ -18,10 +18,10 @@ Press d on a collected row in the remote picker to remove it, after a y/n confir
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 d on a collected row asks for confirmation, then removes it from the files and the list
-- [ ] #2 d on a real remote does nothing but show a note
-- [ ] #3 State-machine and render tests cover confirm, cancel and refusal
-- [ ] #4 Keys, README and docs/usage.md are updated
+- [x] #1 d on a collected row asks for confirmation, then removes it from the files and the list
+- [x] #2 d on a real remote does nothing but show a note
+- [x] #3 State-machine and render tests cover confirm, cancel and refusal
+- [x] #4 Keys, README and docs/usage.md are updated
 <!-- AC:END -->
 
 ## Implementation Notes
