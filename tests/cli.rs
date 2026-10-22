@@ -143,6 +143,17 @@ fn list_shows_label_url_tags_and_file() {
 }
 
 #[test]
+fn the_summary_uses_would_on_a_dry_run_and_added_otherwise() {
+    let repo = Repo::new();
+    let dry = stderr(&repo.fv(&["add", "--all", "--dry-run", "url", NET]));
+    assert!(dry.contains("would add 1"), "{dry}");
+    assert!(!dry.contains("added"), "{dry}");
+    let real = stderr(&repo.fv(&["add", "--all", "url", NET]));
+    assert!(real.contains("added 1"), "{real}");
+    assert!(!real.contains("would"), "{real}");
+}
+
+#[test]
 fn dry_run_changes_nothing() {
     let repo = Repo::new();
     let out = repo.fv(&["add", "--all", "--dry-run", "url", NET]);

@@ -158,8 +158,13 @@ pub fn add(args: &AddArgs) -> Result<()> {
         }
     };
 
+    let (added, updated) = if args.dry_run {
+        ("would add", "would update tags on")
+    } else {
+        ("added", "tags updated")
+    };
     let summary = format!(
-        "added {}, tags updated {}, already present {}, rejected {}",
+        "{added} {}, {updated} {}, already present {}, rejected {}",
         chosen.len(),
         plan.tag_updates.len(),
         plan.present.len(),
