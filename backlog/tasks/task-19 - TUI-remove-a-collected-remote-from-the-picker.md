@@ -4,6 +4,7 @@ title: 'TUI: remove a collected remote from the picker'
 status: To Do
 assignee: []
 created_date: '2026-10-22T02:59:00Z'
+updated_date: '2026-10-22T03:02:00Z'
 labels: []
 dependencies: []
 ordinal: 18000
@@ -22,3 +23,9 @@ Press d on a collected row in the remote picker to remove it, after a y/n confir
 - [ ] #3 State-machine and render tests cover confirm, cancel and refusal
 - [ ] #4 Keys, README and docs/usage.md are updated
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decision: d on a collected row shows a status-line prompt 'remove <label>? y/n'; y removes, anything else cancels. No dd, no unconfirmed delete.
+<!-- SECTION:NOTES:END -->
