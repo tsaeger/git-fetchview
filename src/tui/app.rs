@@ -208,6 +208,7 @@ fn remote_cells(r: &Remote) -> Vec<String> {
 }
 
 /// Picker state.
+#[allow(clippy::struct_excessive_bools)] // independent UI flags, not a state machine
 #[derive(Debug)]
 pub struct App {
     remotes: Vec<Remote>,
@@ -222,6 +223,8 @@ pub struct App {
     typing: bool,
     /// The key help is showing; the next key closes it.
     help: bool,
+    /// The info panel under the list is showing.
+    info: bool,
     error: Option<String>,
     notice: Option<String>,
     viewport: usize,
@@ -261,6 +264,7 @@ impl App {
             level: Level::Remotes,
             typing: false,
             help: false,
+            info: true,
             error: None,
             notice: None,
             viewport: 10,
@@ -395,6 +399,12 @@ impl App {
         self.help
     }
 
+    /// True while the info panel is showing.
+    #[must_use]
+    pub fn info(&self) -> bool {
+        self.info
+    }
+
     /// True while a search is being typed.
     #[must_use]
     pub fn typing(&self) -> bool {
@@ -511,6 +521,7 @@ impl App {
             }
             Action::Filter => self.typing = self.list_mut().begin_column_edit(),
             Action::Help => self.help = true,
+            Action::Info => self.info = !self.info,
             Action::Clear => self.list_mut().clear(),
             Action::Sort => self.list_mut().cycle_sort(),
             Action::ColumnPrev => self.list_mut().move_column(-1),
@@ -1272,6 +1283,16 @@ mod tests {
         assert!(!a.help());
         assert_eq!(a.mode(), Mode::Normal);
         assert_eq!(a.list().cursor(), 0, "the key that closed it did not move");
+    }
+
+    #[test]
+    fn v_toggles_the_info_panel_and_it_starts_on() {
+        let mut a = app();
+        assert!(a.info());
+        a.update(Action::Info, &mut refs);
+        assert!(!a.info());
+        a.update(Action::Info, &mut refs);
+        assert!(a.info());
     }
 
     #[test]

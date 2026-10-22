@@ -44,6 +44,8 @@ pub struct Select {
     typing: bool,
     /// The key help is showing; the next key closes it.
     help: bool,
+    /// The info panel under the list is showing.
+    info: bool,
     viewport: usize,
     /// Visible position where the highlight started; the cursor is its other end.
     anchor: Option<usize>,
@@ -71,6 +73,7 @@ impl Select {
             checked: BTreeSet::new(),
             typing: false,
             help: false,
+            info: true,
             viewport: 10,
             anchor: None,
         }
@@ -98,6 +101,12 @@ impl Select {
     #[must_use]
     pub fn help(&self) -> bool {
         self.help
+    }
+
+    /// True while the info panel is showing.
+    #[must_use]
+    pub fn info(&self) -> bool {
+        self.info
     }
 
     /// True while a search is being typed.
@@ -181,6 +190,7 @@ impl Select {
             }
             Action::Filter => self.typing = self.list.begin_column_edit(),
             Action::Help => self.help = true,
+            Action::Info => self.info = !self.info,
             Action::Clear => self.list.clear(),
             Action::Sort => self.list.cycle_sort(),
             Action::ColumnPrev => self.list.move_column(-1),
@@ -538,6 +548,14 @@ mod tests {
         s.update(Action::Toggle);
         assert!(!s.help());
         assert_eq!(s.checked_count(), 0);
+    }
+
+    #[test]
+    fn v_toggles_the_info_panel() {
+        let mut s = Select::new(rows());
+        assert!(s.info());
+        s.update(Action::Info);
+        assert!(!s.info());
     }
 
     #[test]

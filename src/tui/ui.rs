@@ -48,27 +48,124 @@ const SELECT_HEADERS: [Header; 4] = [
     ("source", Some(SortColumn::Source)),
 ];
 
-/// Columns before the last one stop growing here; the last takes what is left.
-const COLUMN_CAP: usize = 60;
+/// Blank columns between data columns.
 const COLUMN_GAP: u16 = 2;
+/// The cursor symbol the table reserves room for.
+const HIGHLIGHT_WIDTH: usize = 2;
+/// A column is never squeezed below this.
+const COLUMN_MIN: usize = 4;
+/// The gutter (the column with no title) is at least this wide.
+const GUTTER_MIN: usize = 2;
 
-/// Width of each column: the widest of its header and cells, capped.
-fn column_widths(headers: &[Header], rows: &[Vec<String>]) -> Vec<usize> {
+/// Width each column wants: the widest of its header and cells.
+fn natural_widths(headers: &[Header], rows: &[Vec<String>]) -> Vec<usize> {
     let width = |s: &str| Line::from(s).width();
     headers
         .iter()
         .enumerate()
         .map(|(i, (title, _))| {
-            rows.iter()
+            let widest = rows
+                .iter()
                 .filter_map(|r| r.get(i))
                 .map(|c| width(c))
-                .fold(
-                    width(title) + if title.is_empty() { 0 } else { 2 },
-                    usize::max,
-                )
-                .min(COLUMN_CAP)
+                .max()
+                .unwrap_or(0);
+            if title.is_empty() {
+                widest.max(GUTTER_MIN)
+            } else {
+                widest.max(width(title) + 2)
+            }
         })
         .collect()
+}
+
+/// Squeeze the widest titled columns until the lot fits in `room`. The
+/// gutter never shrinks, and no column goes below `COLUMN_MIN`.
+fn fit_widths(natural: &[usize], titled: &[bool], room: usize) -> Vec<usize> {
+    let sum = |cap: usize| -> usize {
+        natural
+            .iter()
+            .zip(titled)
+            .map(|(&w, &t)| if t { w.min(cap) } else { w })
+            .sum()
+    };
+    let mut cap = natural.iter().copied().max().unwrap_or(0);
+    while cap > COLUMN_MIN && sum(cap) > room {
+        cap -= 1;
+    }
+    natural
+        .iter()
+        .zip(titled)
+        .map(|(&w, &t)| if t { w.min(cap.max(COLUMN_MIN)) } else { w })
+        .collect()
+}
+
+/// `s` cut to `width` columns with the middle replaced by an ellipsis, so
+/// both ends (the scheme and the repository name of a URL) stay readable.
+fn elide(s: &str, width: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= width {
+        return s.to_owned();
+    }
+    if width <= 1 {
+        return "\u{2026}".repeat(width);
+    }
+    let keep = width - 1;
+    let head = keep / 2;
+    let tail = keep - head;
+    let mut out: String = chars[..head].iter().collect();
+    out.push('\u{2026}');
+    out.extend(&chars[chars.len() - tail..]);
+    out
+}
+
+/// The panel is shown only when the list keeps at least this many rows.
+const INFO_MIN_LIST: u16 = 6;
+
+/// Split the body into the list and, when it is on and there is room, the
+/// info panel under it: one line per titled column plus the border.
+fn info_split(area: Rect, headers: &[Header], on: bool) -> (Rect, Option<Rect>) {
+    let lines = headers.iter().filter(|h| !h.0.is_empty()).count();
+    let height = u16::try_from(lines + 2).unwrap_or(u16::MAX);
+    if !on || area.height < height + INFO_MIN_LIST {
+        return (area, None);
+    }
+    let [list, panel] =
+        Layout::vertical([Constraint::Min(1), Constraint::Length(height)]).areas(area);
+    (list, Some(panel))
+}
+
+/// The cursor row in full, one `name: value` line per column, the names
+/// right-justified and the values left-justified.
+fn draw_info(frame: &mut Frame<'_>, area: Rect, headers: &[Header], list: &List, theme: &Theme) {
+    let block = Block::bordered()
+        .border_style(Style::new().fg(theme.dim))
+        .style(base(theme));
+    let labels: Vec<&str> = headers
+        .iter()
+        .map(|h| h.0.trim())
+        .filter(|t| !t.is_empty())
+        .collect();
+    let row = list.visible_cells().into_iter().nth(list.cursor());
+    let label_width = labels.iter().map(|l| l.chars().count()).max().unwrap_or(0);
+    let lines: Vec<Line<'_>> = row
+        .map(|(_, cells)| {
+            labels
+                .iter()
+                .zip(cells)
+                .map(|(label, value)| {
+                    Line::from(vec![
+                        Span::styled(
+                            format!("{label:>label_width$}: "),
+                            Style::new().fg(theme.dim),
+                        ),
+                        Span::raw(value.as_str()),
+                    ])
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 /// A header title, with an arrow when it is the sorted column.
@@ -108,17 +205,30 @@ fn render_table(
         .style(base(theme));
 
     let cells: Vec<Vec<String>> = rows.iter().map(|r| r.cells.clone()).collect();
-    let widths = column_widths(headers, &cells);
-    let constraints = widths.iter().enumerate().map(|(i, &w)| {
-        if i + 1 == widths.len() {
-            Constraint::Fill(1)
-        } else {
-            Constraint::Length(u16::try_from(w).unwrap_or(u16::MAX))
+    let natural = natural_widths(headers, &cells);
+    let titled: Vec<bool> = headers.iter().map(|h| !h.0.is_empty()).collect();
+    // Room for the data after the border, the cursor symbol and the gaps
+    // between data columns (the gutter has none after it).
+    let gaps = titled[..titled.len() - 1].iter().filter(|&&t| t).count() * usize::from(COLUMN_GAP);
+    let room = usize::from(area.width)
+        .saturating_sub(2 + HIGHLIGHT_WIDTH + gaps)
+        .max(COLUMN_MIN);
+    let widths = fit_widths(&natural, &titled, room);
+    // Each column is followed by a gap, except the gutter, and a last empty
+    // column takes whatever width is left.
+    let spacer = || Cell::from("");
+    let mut constraints = Vec::new();
+    for (i, &w) in widths.iter().enumerate() {
+        constraints.push(Constraint::Length(u16::try_from(w).unwrap_or(u16::MAX)));
+        if titled[i] && i + 1 < widths.len() {
+            constraints.push(Constraint::Length(COLUMN_GAP));
         }
-    });
+    }
+    constraints.push(Constraint::Fill(1));
 
     let boxes = list.filterable();
-    let header = Row::new(headers.iter().map(|&(title, column)| {
+    let mut header_cells = Vec::new();
+    for (i, &(title, column)) in headers.iter().enumerate() {
         let sorted = column.is_some() && list.sort().map(|(c, _)| c) == column;
         let mut style = if sorted {
             Style::new().fg(theme.accent).add_modifier(Modifier::BOLD)
@@ -134,14 +244,28 @@ fn render_table(
         if boxes {
             lines.push(filter_box(column, list, theme));
         }
-        Cell::from(Text::from(lines))
-    }))
-    .height(if boxes { 2 } else { 1 });
-    let body = rows.into_iter().map(|r| Row::new(r.cells).style(r.style));
+        header_cells.push(Cell::from(Text::from(lines)));
+        if titled[i] && i + 1 < headers.len() {
+            header_cells.push(spacer());
+        }
+    }
+    header_cells.push(spacer());
+    let header = Row::new(header_cells).height(if boxes { 2 } else { 1 });
+    let body = rows.into_iter().map(|r| {
+        let mut out = Vec::new();
+        for (i, cell) in r.cells.iter().enumerate() {
+            out.push(Cell::from(elide(cell, widths[i])));
+            if titled[i] && i + 1 < widths.len() {
+                out.push(spacer());
+            }
+        }
+        out.push(spacer());
+        Row::new(out).style(r.style)
+    });
 
     let table = Table::new(body, constraints)
         .header(header)
-        .column_spacing(COLUMN_GAP)
+        .column_spacing(0)
         .block(block)
         .row_highlight_style(
             Style::new()
@@ -481,7 +605,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
             Level::Remotes => (&REMOTE_HEADERS, rows),
         }
     };
+    let (body, info) = info_split(body, headers, app.info());
     render_table(frame, body, title, headers, app.list(), rows, theme);
+    if let Some(panel) = info {
+        draw_info(frame, panel, headers, app.list(), theme);
+    }
 
     let line = status_line(app, theme, pending);
     frame.render_widget(Paragraph::new(line).style(base(theme)), status);
@@ -534,6 +662,7 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pendin
             }
         })
         .collect();
+    let (body, info) = info_split(body, &SELECT_HEADERS, select.info());
     render_table(
         frame,
         body,
@@ -543,6 +672,9 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pendin
         rows,
         theme,
     );
+    if let Some(panel) = info {
+        draw_info(frame, panel, &SELECT_HEADERS, select.list(), theme);
+    }
 
     let line = if select.typing() {
         typing_hints(theme)
@@ -600,6 +732,118 @@ mod tests {
             url: url.into(),
             tags: tags.iter().map(|t| (*t).into()).collect(),
         }
+    }
+
+    #[test]
+    fn elide_keeps_both_ends_and_fits_the_width() {
+        assert_eq!(elide("short", 10), "short");
+        let out = elide("git://git.kernel.org/pub/scm/linux/x.git", 15);
+        assert_eq!(out.chars().count(), 15);
+        assert!(out.starts_with("git://"), "{out}");
+        assert!(out.ends_with("x.git"), "{out}");
+        assert!(out.contains('\u{2026}'), "{out}");
+        assert_eq!(elide("abcdef", 1), "\u{2026}");
+    }
+
+    #[test]
+    fn only_the_widest_titled_columns_are_squeezed_and_never_the_gutter() {
+        let natural = [2, 10, 60, 8];
+        let titled = [false, true, true, true];
+        assert_eq!(fit_widths(&natural, &titled, 100), vec![2, 10, 60, 8]);
+        assert_eq!(fit_widths(&natural, &titled, 40), vec![2, 10, 20, 8]);
+    }
+
+    #[test]
+    fn the_gutter_is_two_wide_and_the_filter_box_starts_at_the_names() {
+        let app = App::new(vec![remote("origin", "https://h/o", &[])]);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(80, 8, |f| draw(f, &app, &theme, ""));
+        let row = lines.iter().find(|l| l.contains("origin")).unwrap();
+        let col = |l: &str, needle: &str| l[..l.find(needle).unwrap()].chars().count();
+        // Border, then the two-wide cursor symbol, then a two-wide gutter.
+        assert_eq!(col(row, "origin"), 5);
+        assert!(row.contains("\u{25cf} origin"), "{row:?}");
+        assert_eq!(col(&lines[2], "name"), col(row, "origin"));
+        assert_eq!(col(&lines[3], "filter"), col(row, "origin"));
+    }
+
+    #[test]
+    fn source_is_only_as_wide_as_its_content_and_the_rest_is_blank() {
+        let app = App::new(vec![remote("a", "https://h/a", &["merge"])]);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(120, 8, |f| draw(f, &app, &theme, ""));
+        let header = &lines[2];
+        let source_at = header[..header.find("source").unwrap()].chars().count();
+        assert!(source_at < 40, "{header:?}");
+        let filters = &lines[3];
+        assert!(filters.trim_end_matches(['\u{2502}', ' ']).chars().count() < 60);
+    }
+
+    #[test]
+    fn a_long_url_loses_its_middle_not_its_end() {
+        let url = "git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git";
+        let app = App::new(vec![remote("torvalds", url, &[])]);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(50, 8, |f| draw(f, &app, &theme, ""));
+        let row = lines.iter().find(|l| l.contains("torvalds")).unwrap();
+        assert!(row.contains("git://"), "{row:?}");
+        assert!(row.contains('\u{2026}'), "{row:?}");
+        assert!(row.contains("linux.git"), "{row:?}");
+    }
+
+    #[test]
+    fn the_info_panel_shows_the_cursor_row_with_names_right_justified() {
+        let mut app = App::new(vec![
+            remote("origin", "https://h/o", &[]),
+            remote("netdev/net-next", "https://h/n", &["merge"]),
+        ]);
+        let theme = Theme::from(ThemeName::default());
+        step(&mut app, &[Action::Down]);
+        let lines = screen(80, 20, |f| draw(f, &app, &theme, ""));
+        assert!(
+            lines.iter().any(|l| l.contains("  name: netdev/net-next")),
+            "{lines:?}"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("   url: https://h/n")),
+            "{lines:?}"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("source: merge")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn v_hides_the_info_panel_and_a_short_screen_has_none() {
+        let mut app = App::new(vec![remote("origin", "https://h/o", &[])]);
+        let theme = Theme::from(ThemeName::default());
+        let shown = |app: &App, h| {
+            screen(80, h, |f| draw(f, app, &theme, ""))
+                .iter()
+                .any(|l| l.contains("source: "))
+        };
+        assert!(shown(&app, 20));
+        assert!(!shown(&app, 10), "no room");
+        step(&mut app, &[Action::Info]);
+        assert!(!shown(&app, 20));
+    }
+
+    #[test]
+    fn the_add_picker_has_the_info_panel_too() {
+        let s = Select::new(vec![Row {
+            cells: vec!["linux".into(), "https://h/linux.git".into(), "merge".into()],
+            name: "linux".into(),
+            url: "https://h/linux.git".into(),
+            source: "merge".into(),
+            have: false,
+        }]);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(80, 20, |f| draw_select(f, &s, &theme, ""));
+        assert!(
+            lines.iter().any(|l| l.contains("url: https://h/linux.git")),
+            "{lines:?}"
+        );
     }
 
     #[test]

@@ -91,6 +91,8 @@ pub enum Action {
     ExtendUp,
     /// Show the key help.
     Help,
+    /// Show or hide the info panel for the row under the cursor.
+    Info,
     /// Toggle the row under the cursor, or the highlighted rows (multi-select).
     Toggle,
     /// Toggle every visible row (multi-select).
@@ -303,6 +305,7 @@ fn map_normal(code: KeyCode, modifiers: KeyModifiers) -> Option<Action> {
         KeyCode::Char('/' | 'i') => Some(Action::Search),
         KeyCode::Char('f') => Some(Action::Filter),
         KeyCode::Char('?') => Some(Action::Help),
+        KeyCode::Char('v') => Some(Action::Info),
         KeyCode::Char('c') => Some(Action::Clear),
         KeyCode::Char('d') => Some(Action::Delete),
         KeyCode::Char('n') => Some(Action::New),
@@ -462,7 +465,7 @@ pub const HELP: &[HelpSection] = &[
         ],
     },
     HelpSection {
-        title: "Columns",
+        title: "Columns and info",
         entries: &[
             entry(
                 "h l \u{2190} \u{2192}",
@@ -476,6 +479,11 @@ pub const HELP: &[HelpSection] = &[
                 "s",
                 "sort: up, down, off",
                 &[plain(KeyCode::Char('s'), Action::Sort)],
+            ),
+            entry(
+                "v",
+                "toggle the info panel",
+                &[plain(KeyCode::Char('v'), Action::Info)],
             ),
         ],
     },
