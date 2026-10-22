@@ -30,7 +30,11 @@ fn base(theme: &Theme) -> Style {
 /// A column header and the sort column it stands for, if it can be sorted.
 type Header = (&'static str, Option<SortColumn>);
 
-const REMOTE_HEADERS: [Header; 3] = [
+/// Marks a real git remote; collected ones get a blank.
+const REAL_DOT: &str = "\u{25cf}";
+
+const REMOTE_HEADERS: [Header; 4] = [
+    ("", None),
     ("name", Some(SortColumn::Label)),
     ("url", Some(SortColumn::Url)),
     ("source", Some(SortColumn::Source)),
@@ -294,9 +298,16 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
             .list()
             .visible_cells()
             .into_iter()
-            .map(|(_, cells)| TableRow {
-                cells: cells.to_vec(),
-                style: Style::new(),
+            .map(|(i, cells)| {
+                let mut row = cells.to_vec();
+                if app.level() == Level::Remotes {
+                    let dot = if app.is_real(i) { REAL_DOT } else { " " };
+                    row.insert(0, dot.to_owned());
+                }
+                TableRow {
+                    cells: row,
+                    style: Style::new(),
+                }
             })
             .collect();
         match app.level() {
@@ -424,7 +435,8 @@ mod tests {
         let lines = screen(60, 8, |f| draw(f, &app, &theme, ""));
         let url_col = |needle: &str| {
             let line = lines.iter().find(|l| l.contains(needle)).unwrap();
-            line.find("https://").unwrap()
+            // Columns, not bytes: the dot is wider than a space in UTF-8.
+            line[..line.find("https://").unwrap()].chars().count()
         };
         assert_eq!(url_col("origin"), url_col("netdev/net-next"));
         // The source column lines up too, and the header names the columns.
@@ -759,5 +771,19 @@ mod tests {
             "{}",
             bottom(&s)
         );
+    }
+
+    #[test]
+    fn real_remotes_get_a_gutter_dot_and_collected_ones_do_not() {
+        let app = App::new(vec![
+            remote("origin", "https://h/o", &[]),
+            remote("net", "https://h/net", &["maintainers"]),
+        ]);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(80, 8, |f| draw(f, &app, &theme, ""));
+        let origin = lines.iter().find(|l| l.contains("origin")).unwrap();
+        let net = lines.iter().find(|l| l.contains("net")).unwrap();
+        assert!(origin.contains(REAL_DOT), "{origin:?}");
+        assert!(!net.contains(REAL_DOT), "{net:?}");
     }
 }

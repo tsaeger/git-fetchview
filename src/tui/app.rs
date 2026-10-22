@@ -411,6 +411,13 @@ impl App {
         self.chosen.map(|i| self.remotes[i].name.as_str())
     }
 
+    /// Whether remote `i` (original index) is a configured git remote, not a
+    /// collected one.
+    #[must_use]
+    pub fn is_real(&self, i: usize) -> bool {
+        self.remotes.get(i).is_some_and(|r| r.tags.is_empty())
+    }
+
     fn list_mut(&mut self) -> &mut List {
         match self.level {
             Level::Remotes => &mut self.remote_list,
