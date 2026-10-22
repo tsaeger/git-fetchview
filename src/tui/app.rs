@@ -6,6 +6,7 @@
 use crate::cli::AddSource;
 use crate::error::{Error, Result};
 use crate::git::{Remote, RemoteRef, redact_url};
+use crate::last::Last;
 use crate::remotes::entry::{Entry, key as repo_key, validate_url};
 use crate::tui::keys::{Action, Command, Mode};
 use crate::tui::list::{List, SortKeys, SortOrder};
@@ -229,6 +230,8 @@ pub struct App {
     /// The collected remote a remove question is open for.
     confirming: Option<usize>,
     prompt: Option<Prompt>,
+    /// What was picked last, to start on.
+    last: Option<Last>,
     /// Index of a remote typed at the `o` prompt, kept only while it is open.
     /// It is always the last one, and never in the list.
     temp: Option<usize>,
@@ -264,12 +267,27 @@ impl App {
             loading: None,
             confirming: None,
             prompt: None,
+            last: None,
             temp: None,
             menu: None,
             scanning: None,
             next_load: 0,
             spinner: 0,
         }
+    }
+
+    /// Start on the remote picked last, and open its refs list on the ref
+    /// picked last. A remote or ref that is no longer there changes nothing.
+    #[must_use]
+    pub fn with_last(mut self, last: Option<Last>) -> Self {
+        if let Some(last) = &last {
+            let wanted = repo_key(&last.url);
+            if let Some(i) = self.remotes.iter().position(|r| repo_key(&r.url) == wanted) {
+                self.remote_list.focus(i);
+            }
+        }
+        self.last = last;
+        self
     }
 
     /// Show a message in the status line until the next key press.
@@ -840,6 +858,7 @@ impl App {
                 self.hidden_refs = hidden;
                 self.showing_hidden = false;
                 self.set_refs(refs);
+                self.focus_last_ref(index);
                 if note.is_some() {
                     self.notice = note;
                 }
@@ -887,6 +906,20 @@ impl App {
             self.showing_hidden = false;
             self.ref_list = List::default();
             self.forget_temp();
+        }
+    }
+
+    /// On the ref picked last, if this is the remote it was picked from and
+    /// the ref is in the list.
+    fn focus_last_ref(&mut self, remote: usize) {
+        let Some(last) = &self.last else {
+            return;
+        };
+        if repo_key(&self.remotes[remote].url) != repo_key(&last.url) {
+            return;
+        }
+        if let Some(i) = self.refs.iter().position(|r| r.name == last.refname) {
+            self.ref_list.focus(i);
         }
     }
 
@@ -2029,5 +2062,62 @@ mod tests {
         assert_eq!(a.scanning(), None);
         assert!(a.error().is_some());
         assert_eq!(a.list().total(), 3);
+    }
+
+    fn last(url: &str, refname: &str) -> crate::last::Last {
+        crate::last::Last {
+            url: url.into(),
+            refname: refname.into(),
+        }
+    }
+
+    #[test]
+    fn the_remote_list_starts_on_the_remote_picked_last() {
+        let a = collected_app().with_last(Some(last("https://h/usb", "refs/heads/x")));
+        let under = a.list().visible_cells()[a.list().cursor()].1[0].clone();
+        assert_eq!(under, "usb/usb");
+        // The same repo spelled another way still counts.
+        let b = collected_app().with_last(Some(last("git@h:net.git", "refs/heads/x")));
+        let under = b.list().visible_cells()[b.list().cursor()].1[0].clone();
+        assert_eq!(under, "netdev/net");
+    }
+
+    #[test]
+    fn a_remote_that_is_gone_or_no_memory_starts_at_the_top() {
+        for last in [None, Some(last("https://h/gone", "refs/heads/x"))] {
+            let a = collected_app().with_last(last);
+            assert_eq!(a.list().cursor(), 0);
+        }
+    }
+
+    #[test]
+    fn the_refs_list_starts_on_the_ref_picked_last_when_it_is_still_there() {
+        let mut a = collected_app().with_last(Some(last("https://h/net", "refs/tags/v2")));
+        let load = load_request(a.step(Command::from(Action::Enter)));
+        assert_eq!(load.remote.name, "netdev/net");
+        a.finish_load(
+            load.id,
+            Ok(refs_of(&[
+                "refs/heads/main",
+                "refs/tags/v1",
+                "refs/tags/v2",
+            ])),
+        );
+        let under = a.list().visible_cells()[a.list().cursor()].1[0].clone();
+        assert_eq!(under, "refs/tags/v2");
+
+        // A ref that has gone, or a different remote, starts at the top.
+        let mut b = collected_app().with_last(Some(last("https://h/net", "refs/tags/gone")));
+        let load = load_request(b.step(Command::from(Action::Enter)));
+        assert_eq!(load.remote.name, "netdev/net");
+        b.finish_load(load.id, Ok(refs_of(&["refs/heads/main", "refs/tags/v1"])));
+        assert_eq!(b.list().cursor(), 0);
+        // The ref belongs to that remote only.
+        let mut c = collected_app().with_last(Some(last("https://h/net", "refs/tags/v2")));
+        c.step(Command::from(Action::Down));
+        let load = load_request(c.step(Command::from(Action::Enter)));
+        assert_eq!(load.remote.name, "usb/usb");
+        c.finish_load(load.id, Ok(refs_of(&["refs/heads/main", "refs/tags/v2"])));
+        assert_eq!(c.list().cursor(), 0);
     }
 }

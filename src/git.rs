@@ -101,6 +101,12 @@ impl Cmd {
         Self::new("git", ["config", "--get", key])
     }
 
+    /// `git config --type=bool --get <key>`: `true` or `false`.
+    #[must_use]
+    pub fn config_get_bool(key: &str) -> Self {
+        Self::new("git", ["config", "--type=bool", "--get", key])
+    }
+
     /// `git config --get-all <key>`
     #[must_use]
     pub fn config_get_all(key: &str) -> Self {

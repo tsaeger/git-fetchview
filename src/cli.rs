@@ -14,6 +14,7 @@ use crate::commands;
 use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::git::{self, Cmd};
+use crate::last::{self, Last};
 use crate::remotes::{self, registry};
 use crate::resolve;
 use crate::tui::{self, theme::ThemeName};
@@ -228,6 +229,7 @@ fn pick_and_view(cli: &Cli) -> Result<()> {
         notice(&loaded.warnings),
         &hide,
         start,
+        config.remember.then(last::load).flatten(),
     )?
     else {
         return Ok(());
@@ -241,6 +243,13 @@ fn fetch_and_view(config: &Config, url: &str, refname: &str) -> Result<()> {
     // for anyone, not only in a clone that happens to have this remote.
     let fetch = Cmd::fetch(url, refname);
     let viewer = Cmd::shell(&config.viewer);
+    if config.remember {
+        // A nicety: failing to write it must not stop the fetch.
+        let _ = last::save(&Last {
+            url: git::redact_url(url),
+            refname: refname.to_owned(),
+        });
+    }
 
     // The trail: paste these to do the same thing without git-fetchview.
     // It is shared with others, so embedded passwords are removed.

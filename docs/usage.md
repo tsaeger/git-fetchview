@@ -118,6 +118,16 @@ git config fetchview.theme gruvbox      # this repository only
 Themes: `kanagawa` (default), `gruvbox`, `nord`, `catppuccin`.
 Flags override config: `git fetchview --theme nord`.
 
+### Starting where you left off
+
+The picker puts the cursor on the remote you picked last, and in that remote's
+refs list on the ref you picked last, if it is still there. It is remembered
+per repository, in `.git/fetchview/last`. To turn it off:
+
+```sh
+git config fetchview.remember false
+```
+
 ### Viewer
 
 `fetchview.viewer` chooses what browses `FETCH_HEAD`. It is a preset name or a

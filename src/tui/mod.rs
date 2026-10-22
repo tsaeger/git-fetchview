@@ -21,6 +21,7 @@ use crate::commands;
 use crate::error::{Error, Result};
 use crate::git::{self, Cancel, Remote};
 use crate::hide::{self, Hidden, Rule};
+use crate::last::Last;
 use crate::remotes::entry::{Entry, key as repo_key};
 use crate::remotes::registry;
 use app::{App, Flow, Load, Loaded, Selection};
@@ -49,9 +50,10 @@ pub fn pick(
     notice: Option<String>,
     hide: &HideRefs,
     start: Option<String>,
+    last: Option<Last>,
 ) -> Result<Option<Selection>> {
     let theme = Theme::from(theme);
-    let mut app = App::new(remotes).with_notice(notice);
+    let mut app = App::new(remotes).with_notice(notice).with_last(last);
     // A URL from the command line opens straight to its refs.
     let first = start.map(|url| app.open_once(url));
     let mut terminal = ratatui::init();

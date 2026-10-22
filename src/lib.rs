@@ -12,6 +12,7 @@ pub mod config;
 pub mod error;
 pub mod git;
 pub mod hide;
+pub mod last;
 pub mod remotes;
 pub mod resolve;
 pub mod search;

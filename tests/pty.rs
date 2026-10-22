@@ -717,3 +717,94 @@ fn a_remote_name_on_the_command_line_opens_its_refs_straight_away() {
     s.send("q");
     assert!(s.wait_exit().success());
 }
+
+/// Pick `refs/tags/v1.0` of the second remote, `zeta`, and let the viewer end.
+fn pick_a_tag_of_zeta(world: &World) {
+    let mut s = world.start().expect("pty");
+    s.wait_for("origin");
+    s.send("j");
+    s.send("\r");
+    s.wait_for("refs of zeta");
+    s.send("i");
+    s.send("tags/v1.0");
+    // Only once the box shows the text has the whole typing been read.
+    s.wait_for("search: tags/v1.0\u{2588}");
+    s.send("\x1b");
+    s.wait_for("1 of 3");
+    s.send("\r");
+    assert!(s.wait_exit().success());
+}
+
+/// A second remote for the same repository under another path, so the two
+/// have different identities.
+fn world_with_zeta() -> World {
+    let world = World::new();
+    let link = world.home.path().join("zeta.git");
+    std::os::unix::fs::symlink(world.bare.path(), &link).unwrap();
+    world.add_remote("zeta", link.to_str().unwrap());
+    world
+}
+
+#[test]
+fn the_picker_starts_where_you_left_off() {
+    if native_pty_system()
+        .openpty(PtySize {
+            rows: 2,
+            cols: 2,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .is_err()
+    {
+        eprintln!("no pty available, skipping");
+        return;
+    }
+    let world = world_with_zeta();
+    pick_a_tag_of_zeta(&world);
+
+    let mut s = session!(world);
+    s.wait_until("the cursor on zeta", |t| {
+        t.lines().any(|l| l.starts_with("│> zeta"))
+    });
+    s.send("\r");
+    s.wait_until("the cursor on the tag", |t| {
+        t.lines().any(|l| l.starts_with("│> refs/tags/v1.0"))
+    });
+    s.send("q");
+    assert!(s.wait_exit().success());
+}
+
+#[test]
+fn remember_false_starts_at_the_top() {
+    if native_pty_system()
+        .openpty(PtySize {
+            rows: 2,
+            cols: 2,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .is_err()
+    {
+        eprintln!("no pty available, skipping");
+        return;
+    }
+    let world = world_with_zeta();
+    pick_a_tag_of_zeta(&world);
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(world.home.path().join("gitconfig"))
+        .unwrap()
+        .write_all(b"[fetchview]\n\tremember = false\n")
+        .unwrap();
+    let mut s = session!(world);
+    s.wait_until("the cursor on origin", |t| {
+        t.lines().any(|l| l.starts_with("│> origin"))
+    });
+    s.send("\r");
+    s.wait_for("refs of origin");
+    s.wait_until("the cursor on HEAD", |t| {
+        t.lines().any(|l| l.starts_with("│> HEAD"))
+    });
+    s.send("q");
+    assert!(s.wait_exit().success());
+}

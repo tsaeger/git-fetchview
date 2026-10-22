@@ -15,6 +15,7 @@
 use crate::error::{Error, Result};
 use crate::git::Cmd;
 use crate::hide::{self, Rule};
+use crate::last;
 use crate::tui::theme::ThemeName;
 use crate::viewer;
 
@@ -35,6 +36,8 @@ pub struct Config {
     pub hide: Vec<Rule>,
     /// Ref patterns the refs picker always leaves out.
     pub hide_refs: Vec<String>,
+    /// Start the picker on the remote and ref picked last.
+    pub remember: bool,
 }
 
 impl Config {
@@ -79,11 +82,25 @@ impl Config {
             }
         })?;
         let hide_refs = hide::parse_patterns(get_all(hide::PATTERNS_KEY)?.as_deref());
+        let remember = match Cmd::config_get_bool(last::KEY).output() {
+            Ok(value) => value.trim() != "false",
+            // Unset, so the default.
+            Err(Error::Failed { status, .. }) if status.code() == Some(1) => true,
+            Err(Error::Failed { stderr, .. }) => {
+                return Err(Error::BadConfig {
+                    key: last::KEY,
+                    value: String::new(),
+                    reason: stderr.trim().to_owned(),
+                });
+            }
+            Err(e) => return Err(e),
+        };
         Ok(Self {
             theme,
             viewer,
             hide,
             hide_refs,
+            remember,
         })
     }
 }
