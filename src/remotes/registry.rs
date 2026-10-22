@@ -182,6 +182,40 @@ pub fn load_registered() -> Loaded {
     }
 }
 
+/// Merge `entries` into the remotes file at `path` and register it in
+/// `fetchview.remotes` as `stored` at `scope`.
+///
+/// # Errors
+/// The file cannot be read or written, or git cannot set the config.
+pub fn write_entries(path: &Path, stored: &str, scope: Scope, entries: &[Entry]) -> Result<()> {
+    let existing = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(e) => {
+            return Err(Error::Io {
+                path: path.to_owned(),
+                source: e,
+            });
+        }
+    };
+    file::write_atomic(path, &file::merge(&existing, entries))?;
+    register(stored, path, scope)?;
+    Ok(())
+}
+
+/// Add one entry to the default file, as `add url` does with no flags.
+///
+/// # Errors
+/// As [`write_entries`], or the git directory cannot be found.
+pub fn add_to_default(entry: &Entry) -> Result<()> {
+    write_entries(
+        &default_file()?,
+        DEFAULT_FILE,
+        Scope::Local,
+        std::slice::from_ref(entry),
+    )
+}
+
 /// Remove the repo with this [`key`](super::entry::key) from every registered
 /// file that has it. Returns the files that were rewritten.
 ///

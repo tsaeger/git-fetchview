@@ -21,6 +21,7 @@ The README covers the first steps. This is the reference.
 | `c`                     | clear the search                            |
 | `s`                     | sort mode: `h` `l` pick the column, `r` reverses, `s` `Esc` `Enter` finish |
 | `r`                     | reverse the current order                   |
+| `n`                     | remote list: add a URL. `Enter` adds it to the default remotes file and puts the cursor on its row, `Esc` cancels |
 | `d`                     | remote list: remove the collected remote under the cursor; `y` confirms, any other key cancels |
 | `q`                     | quit, from anywhere                         |
 

@@ -13,7 +13,7 @@ use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::git::{Cmd, redact_url};
 use crate::remotes::entry::{Entry, key, validate_url};
-use crate::remotes::file::{merge, render_line, write_atomic};
+use crate::remotes::file::render_line;
 use crate::remotes::plan::{Plan, plan};
 use crate::remotes::registry::{self, Scope};
 use crate::remotes::source::maintainers::Maintainers;
@@ -185,13 +185,7 @@ pub fn add(args: &AddArgs) -> Result<()> {
         return Ok(());
     }
 
-    let existing = match fs::read_to_string(&target_path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
-        Err(e) => return Err(io_err(&target_path)(e)),
-    };
-    write_atomic(&target_path, &merge(&existing, &write))?;
-    registry::register(&stored, &target_path, scope)?;
+    registry::write_entries(&target_path, &stored, scope, &write)?;
     eprintln!("{summary}");
     Ok(())
 }

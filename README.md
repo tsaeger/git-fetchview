@@ -71,6 +71,7 @@ git fetchview
 Pick `BurntSushi/ripgrep`, press `/`, type `pull/998/head` and press `Enter`
 twice (once to leave the search box, once to pick the ref). You are in tig on
 that PR's commits. Your checkout is unchanged. If the repository is already one of your remotes, skip the `add`.
+You can also press `n` in the picker and type the URL.
 Other hosts use other names (GitLab has `refs/merge-requests/N/head`, Gerrit
 `refs/changes/...`), and the picker lists whatever the remote advertises.
 
@@ -106,6 +107,7 @@ how many it hid, and opening mainline itself shows everything. See
 | `/` or `i`          | edit the search box; `Esc` or `Enter` leaves it  |
 | `c`                 | clear the search                                 |
 | `s` then `h` `l`    | choose the sort column; `r` reverses             |
+| `n`                 | add a URL to your collected remotes              |
 | `d`                 | remove a collected remote, after `y`             |
 | `q`                 | quit, from anywhere                              |
 

@@ -34,6 +34,7 @@ equivalent plain commands as a cut-and-paste trail. Linux and macOS are the prim
 - `hjkl` and arrows both navigate. `Enter`/`l`/`→` drops in (and selects, advancing to the next level); `Esc`/`h`/`←` drops out.
 - `Esc` at the top level does **not** exit. `q` exits from any level. While a remote's refs load, `Esc`/`h` or Ctrl-C give up and return to the remote list (Ctrl-C quits when nothing is loading).
 - `/` or `i` edits the search box on the top line (substring now; regex later, in `tui/list.rs::matches`). `c` clears it. `s` enters sort mode, where `h`/`l` move the sort column and `r` reverses; `r` also works outside it. Sorting never moves a row out of its group, and compares names naturally (`v6.9` before `v6.10`).
+- `n` in the remote list opens a one-line prompt on the status line (`Mode::Prompt`, characters are text like the search box): `Enter` adds the URL to the default file, `Esc` cancels. A bad URL shows why and keeps the prompt; a repo already listed just gets the cursor.
 - `d` on a collected remote asks `remove <name>? y/n` on the status line (`Mode::Confirm`): `y` confirms and any other key cancels. A real remote only gets a note, since git owns it.
 - While typing a search, characters are text (so `q` types a `q`); `Enter` or `Esc` leaves the box and the filter stays; `c` clears it.
 - The single keymap is `tui/keys.rs` (`map` for single keys, `KeyParser` for counts and `gg`); change keys there, not in the state machine.

@@ -366,3 +366,55 @@ fn d_removes_a_collected_remote_after_y_and_refuses_a_real_one() {
     s.send("q");
     assert!(s.wait_exit().success());
 }
+
+#[test]
+fn n_adds_a_url_and_puts_the_cursor_on_the_new_row() {
+    let world = World::new();
+    let mut s = session!(world);
+    s.wait_for("origin");
+
+    // A bad URL says why and keeps the prompt.
+    s.send("n");
+    s.wait_for("add url:");
+    s.send("ext::sh");
+    s.send("\r");
+    s.wait_for("transport helper");
+    assert_eq!(world.collected_file(), "");
+
+    // Start over with a good one.
+    for _ in 0.."ext::sh".len() {
+        s.send("\x7f");
+    }
+    s.send("https://example.org/team/proj.git");
+    s.send("\r");
+    s.wait_for("added team/proj");
+    s.wait_until("the cursor on the new row", |t| {
+        t.lines().any(|l| l.contains("> team/proj"))
+    });
+    assert!(world.collected_file().contains("example.org/team/proj"));
+
+    // The same repo again, spelled as ssh, only moves the cursor.
+    s.send("k");
+    s.send("n");
+    s.send("git@example.org:team/proj");
+    s.send("\r");
+    s.wait_for("already listed as team/proj");
+    assert_eq!(world.collected_file().matches("team/proj").count(), 1);
+    s.send("q");
+    assert!(s.wait_exit().success());
+}
+
+#[test]
+fn esc_closes_the_prompt_without_adding() {
+    let world = World::new();
+    let mut s = session!(world);
+    s.wait_for("origin");
+    s.send("n");
+    s.send("https://example.org/a/b");
+    s.wait_for("add url: https://example.org/a/b");
+    s.send("\x1b");
+    s.wait_until("the prompt gone", |t| !t.contains("add url:"));
+    assert_eq!(world.collected_file(), "");
+    s.send("q");
+    assert!(s.wait_exit().success());
+}

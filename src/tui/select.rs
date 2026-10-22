@@ -168,6 +168,7 @@ impl Select {
             | Action::Quit
             | Action::Interrupt
             | Action::Delete
+            | Action::New
             | Action::Confirm
             | Action::Char(_)
             | Action::Backspace

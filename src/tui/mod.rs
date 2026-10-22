@@ -19,7 +19,7 @@ use ratatui::crossterm::event::{self, Event};
 use crate::error::{Error, Result};
 use crate::git::{self, Cancel, Remote};
 use crate::hide::{Hidden, Rule};
-use crate::remotes::entry::key as repo_key;
+use crate::remotes::entry::{Entry, key as repo_key};
 use crate::remotes::registry;
 use app::{App, Flow, Load, Loaded, Selection};
 use keys::KeyParser;
@@ -162,6 +162,11 @@ fn run(
             Flow::Continue => {}
             Flow::Load(load) => worker.start(load),
             Flow::CancelLoad => worker.cancel(),
+            Flow::Add(url) => {
+                let entry = Entry::new(url, "manual");
+                let result = registry::add_to_default(&entry).map(|()| entry);
+                app.finish_add(result);
+            }
             Flow::Remove(remote) => {
                 let result = registry::remove_entry(&repo_key(&remote.url)).map(|_| ());
                 app.finish_remove(&remote.url, result);

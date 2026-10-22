@@ -5,6 +5,7 @@
 
 use crate::error::{Error, Result};
 use crate::git::{Remote, RemoteRef, redact_url};
+use crate::remotes::entry::{Entry, key as repo_key, validate_url};
 use crate::tui::keys::{Action, Command, Mode};
 use crate::tui::list::{List, SortKeys, SortOrder};
 
@@ -32,6 +33,9 @@ pub enum Flow {
     /// The question was answered yes: remove this collected remote, then call
     /// [`App::finish_remove`].
     Remove(Remote),
+    /// Add this URL to the default remotes file, then call
+    /// [`App::finish_add`].
+    Add(String),
     /// A remote and ref were chosen.
     Done(Selection),
 }
@@ -80,6 +84,37 @@ impl From<Vec<RemoteRef>> for Loaded {
 /// this on another thread instead; this is for tests and simple callers.
 pub type Loader<'a> = dyn FnMut(&Remote) -> Result<Loaded> + 'a;
 
+/// What a prompt is asking for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PromptKind {
+    /// A URL to collect.
+    AddUrl,
+}
+
+impl PromptKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::AddUrl => "add url",
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Prompt {
+    kind: PromptKind,
+    text: String,
+}
+
+fn remote_keys(r: &Remote) -> SortKeys {
+    SortKeys {
+        name: r.name.clone(),
+        url: r.url.clone(),
+        tags: r.tags.join(","),
+        // Real remotes stay above collected ones.
+        group: u8::from(!r.tags.is_empty()),
+    }
+}
+
 fn remote_cells(r: &Remote) -> Vec<String> {
     // The screen can be shared or photographed, like the trail.
     vec![r.name.clone(), redact_url(&r.url), r.tags.join(",")]
@@ -104,6 +139,7 @@ pub struct App {
     loading: Option<(u64, usize)>,
     /// The collected remote a remove question is open for.
     confirming: Option<usize>,
+    prompt: Option<Prompt>,
     next_load: u64,
     spinner: usize,
 }
@@ -113,16 +149,7 @@ impl App {
     #[must_use]
     pub fn new(remotes: Vec<Remote>) -> Self {
         let cells = remotes.iter().map(remote_cells).collect();
-        let keys = remotes
-            .iter()
-            .map(|r| SortKeys {
-                name: r.name.clone(),
-                url: r.url.clone(),
-                tags: r.tags.join(","),
-                // Real remotes stay above collected ones.
-                group: u8::from(!r.tags.is_empty()),
-            })
-            .collect();
+        let keys = remotes.iter().map(remote_keys).collect();
         Self {
             remotes,
             remote_list: List::with_cells(cells, keys),
@@ -138,6 +165,7 @@ impl App {
             chosen: None,
             loading: None,
             confirming: None,
+            prompt: None,
             next_load: 0,
             spinner: 0,
         }
@@ -160,6 +188,14 @@ impl App {
     #[must_use]
     pub fn confirming(&self) -> Option<&str> {
         self.confirming.map(|i| self.remotes[i].name.as_str())
+    }
+
+    /// The open prompt's label and text, if one is open.
+    #[must_use]
+    pub fn prompt(&self) -> Option<(&'static str, &str)> {
+        self.prompt
+            .as_ref()
+            .map(|p| (p.kind.label(), p.text.as_str()))
     }
 
     /// Which frame of the loading spinner to draw.
@@ -202,6 +238,8 @@ impl App {
     pub fn mode(&self) -> Mode {
         if self.confirming.is_some() {
             Mode::Confirm
+        } else if self.prompt.is_some() {
+            Mode::Prompt
         } else if self.typing {
             Mode::Typing
         } else if self.sorting {
@@ -288,6 +326,9 @@ impl App {
         if self.loading.is_some() {
             return self.step_loading(action);
         }
+        if self.prompt.is_some() {
+            return self.step_prompt(action);
+        }
         if action == Action::Interrupt {
             return Flow::Quit;
         }
@@ -310,6 +351,7 @@ impl App {
             Action::Reverse => self.list_mut().toggle_reverse(),
             Action::Back => self.back(),
             Action::Delete => self.ask_remove(),
+            Action::New => self.open_prompt(PromptKind::AddUrl),
             Action::Enter => return self.enter(),
             Action::Quit
             | Action::Interrupt
@@ -330,6 +372,89 @@ impl App {
             | Action::PageUp => {}
         }
         Flow::Continue
+    }
+
+    /// `n`: ask for a URL. Only the remote list can take one.
+    fn open_prompt(&mut self, kind: PromptKind) {
+        if self.level == Level::Remotes {
+            self.prompt = Some(Prompt {
+                kind,
+                text: String::new(),
+            });
+        }
+    }
+
+    fn step_prompt(&mut self, action: Action) -> Flow {
+        let Some(prompt) = self.prompt.as_mut() else {
+            return Flow::Continue;
+        };
+        match action {
+            Action::Char(c) => prompt.text.push(c),
+            Action::Backspace => {
+                prompt.text.pop();
+            }
+            Action::Back => self.prompt = None,
+            Action::Enter => return self.submit_prompt(),
+            Action::Interrupt => return Flow::Quit,
+            _ => {}
+        }
+        Flow::Continue
+    }
+
+    /// Enter in the prompt. A bad URL says why and leaves the prompt open. A
+    /// repo that is already listed gets the cursor instead of a second row.
+    fn submit_prompt(&mut self) -> Flow {
+        let Some(prompt) = self.prompt.as_ref() else {
+            return Flow::Continue;
+        };
+        let text = prompt.text.trim().to_owned();
+        match validate_url(&text) {
+            Err(why) => {
+                self.error = Some(format!("not a usable URL: {why}"));
+                Flow::Continue
+            }
+            Ok(url) => {
+                self.prompt = None;
+                let wanted = repo_key(&url);
+                if let Some(i) = self.remotes.iter().position(|r| repo_key(&r.url) == wanted) {
+                    self.remote_list.focus(i);
+                    self.notice = Some(format!("already listed as {}", self.remotes[i].name));
+                    Flow::Continue
+                } else {
+                    Flow::Add(url)
+                }
+            }
+        }
+    }
+
+    /// Take the result of a [`Flow::Add`]. On success the row appears in its
+    /// place and the cursor goes to it.
+    pub fn finish_add(&mut self, result: Result<Entry>) {
+        match result {
+            Ok(entry) => {
+                let remote = Remote {
+                    name: entry.display_label(),
+                    url: entry.url,
+                    tags: entry.tags.into_iter().collect(),
+                };
+                // Real remotes first, then collected ones by label.
+                let first_collected = self
+                    .remotes
+                    .iter()
+                    .take_while(|r| r.tags.is_empty())
+                    .count();
+                let at = self.remotes[first_collected..]
+                    .iter()
+                    .position(|r| (&r.name, &r.url) > (&remote.name, &remote.url))
+                    .map_or(self.remotes.len(), |p| first_collected + p);
+                self.remote_list
+                    .insert(at, remote_cells(&remote), remote_keys(&remote));
+                self.notice = Some(format!("added {}", remote.name));
+                self.remotes.insert(at, remote);
+                self.remote_list.focus(at);
+            }
+            Err(e) => self.error = Some(e.to_string()),
+        }
     }
 
     /// While refs are loading only `Esc`, `h` and Ctrl-C do anything (they
@@ -994,5 +1119,107 @@ mod tests {
         on_row(&mut a, 1);
         a.step(Command::from(Action::Delete));
         assert_eq!(a.step(Command::from(Action::Interrupt)), Flow::Quit);
+    }
+
+    fn typed(a: &mut App, text: &str) {
+        for c in text.chars() {
+            a.step(Command::from(Action::Char(c)));
+        }
+    }
+
+    fn entry_for(url: &str) -> crate::remotes::entry::Entry {
+        crate::remotes::entry::Entry::new(url, "manual")
+    }
+
+    #[test]
+    fn n_opens_a_prompt_that_takes_text_and_esc_closes_it() {
+        let mut a = collected_app();
+        a.step(Command::from(Action::New));
+        assert_eq!(a.mode(), Mode::Prompt);
+        assert_eq!(a.prompt(), Some(("add url", "")));
+        typed(&mut a, "ab");
+        a.step(Command::from(Action::Backspace));
+        assert_eq!(a.prompt(), Some(("add url", "a")));
+        assert_eq!(a.step(Command::from(Action::Back)), Flow::Continue);
+        assert_eq!(a.prompt(), None);
+        assert_eq!(a.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn enter_on_a_new_valid_url_asks_the_loop_to_add_it() {
+        let mut a = collected_app();
+        a.step(Command::from(Action::New));
+        typed(&mut a, "  https://u:secret@h/team/proj.git ");
+        let Flow::Add(url) = a.step(Command::from(Action::Enter)) else {
+            panic!("expected an add");
+        };
+        // Trimmed, and the password is not kept.
+        assert_eq!(url, "https://u@h/team/proj.git");
+        assert_eq!(a.prompt(), None);
+    }
+
+    #[test]
+    fn an_invalid_url_shows_why_and_keeps_the_prompt_open() {
+        let mut a = collected_app();
+        a.step(Command::from(Action::New));
+        typed(&mut a, "ext::sh -c id");
+        assert_eq!(a.step(Command::from(Action::Enter)), Flow::Continue);
+        assert!(a.error().is_some());
+        assert_eq!(a.prompt(), Some(("add url", "ext::sh -c id")));
+        // An empty prompt is refused too.
+        let mut b = collected_app();
+        b.step(Command::from(Action::New));
+        assert_eq!(b.step(Command::from(Action::Enter)), Flow::Continue);
+        assert!(b.error().is_some());
+        assert!(b.prompt().is_some());
+    }
+
+    #[test]
+    fn a_url_already_listed_moves_the_cursor_instead_of_adding() {
+        let mut a = collected_app();
+        a.step(Command::from(Action::New));
+        // Same repo as netdev/net, spelled differently.
+        typed(&mut a, "git@h:net.git");
+        assert_eq!(a.step(Command::from(Action::Enter)), Flow::Continue);
+        assert_eq!(a.prompt(), None);
+        let under = a.list().visible_cells()[a.list().cursor()].1[0].clone();
+        assert_eq!(under, "netdev/net");
+        assert!(a.notice().is_some_and(|n| n.contains("already")));
+        assert_eq!(a.list().total(), 3);
+    }
+
+    #[test]
+    fn a_finished_add_inserts_the_row_in_order_and_moves_the_cursor_to_it() {
+        let mut a = collected_app();
+        a.finish_add(Ok(entry_for("https://h/team/proj")));
+        // Real remotes first, then collected ones by label.
+        let names: Vec<String> = a
+            .list()
+            .visible_cells()
+            .iter()
+            .map(|(_, c)| c[0].clone())
+            .collect();
+        assert_eq!(names, ["origin", "netdev/net", "team/proj", "usb/usb"]);
+        let under = a.list().visible_cells()[a.list().cursor()].1[0].clone();
+        assert_eq!(under, "team/proj");
+        assert_eq!(a.level(), Level::Remotes);
+        assert!(a.notice().is_some_and(|n| n.contains("added team/proj")));
+    }
+
+    #[test]
+    fn a_failed_add_shows_the_error_and_adds_nothing() {
+        let mut a = collected_app();
+        a.finish_add(Err(Error::NoRefs("x".into())));
+        assert!(a.error().is_some());
+        assert_eq!(a.list().total(), 3);
+    }
+
+    #[test]
+    fn n_does_nothing_in_the_refs_list() {
+        let mut a = collected_app();
+        let mut load = |_: &Remote| Ok(refs_of(&["refs/heads/main"]));
+        a.update(Action::Enter, &mut load);
+        a.step(Command::from(Action::New));
+        assert_eq!(a.prompt(), None);
     }
 }

@@ -97,16 +97,7 @@ impl List {
     #[must_use]
     pub fn with_cells(cells: Vec<Vec<String>>, keys: Vec<SortKeys>) -> Self {
         debug_assert_eq!(cells.len(), keys.len());
-        let labels = cells
-            .iter()
-            .map(|row| {
-                row.iter()
-                    .filter(|c| !c.is_empty())
-                    .map(String::as_str)
-                    .collect::<Vec<_>>()
-                    .join("  ")
-            })
-            .collect();
+        let labels = cells.iter().map(|row| join_cells(row)).collect();
         Self {
             labels,
             cells,
@@ -184,6 +175,25 @@ impl List {
         self.keys.remove(index);
         let last = self.visible().len().saturating_sub(1);
         self.cursor = self.cursor.min(last);
+    }
+
+    /// Put a row at an original index, shifting the ones after it up. The
+    /// label is the cells joined as in [`List::with_cells`].
+    pub fn insert(&mut self, index: usize, cells: Vec<String>, keys: SortKeys) {
+        self.labels.insert(index, join_cells(&cells));
+        self.cells.insert(index, cells);
+        self.keys.insert(index, keys);
+    }
+
+    /// Move the cursor to the row at original index `index`. A filter that
+    /// hides it is cleared first.
+    pub fn focus(&mut self, index: usize) {
+        if !self.visible().contains(&index) {
+            self.filter.clear();
+        }
+        if let Some(position) = self.visible().iter().position(|&i| i == index) {
+            self.cursor = position;
+        }
     }
 
     /// The current filter text.
@@ -341,6 +351,16 @@ impl List {
     }
 }
 
+/// A row's filter text: its non-empty cells, two spaces apart.
+fn join_cells(cells: &[String]) -> String {
+    cells
+        .iter()
+        .filter(|c| !c.is_empty())
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join("  ")
+}
+
 /// Compare strings the way people read them: case-insensitively, with runs
 /// of digits compared as numbers, so `v6.9` sorts before `v6.10`.
 #[must_use]
@@ -405,6 +425,27 @@ mod tests {
         assert_eq!(l.selected(), Some(0));
         l.remove(0);
         assert_eq!(l.selected(), None);
+    }
+
+    #[test]
+    fn insert_puts_a_row_at_an_original_index_and_focus_moves_the_cursor_to_it() {
+        let mut l = List::new(vec!["a".into(), "c".into()]);
+        l.insert(1, vec!["b".into()], SortKeys::default());
+        assert_eq!(l.visible_labels(), ["a", "b", "c"]);
+        l.focus(1);
+        assert_eq!(l.selected(), Some(1));
+        l.focus(2);
+        assert_eq!(l.selected(), Some(2));
+    }
+
+    #[test]
+    fn focus_clears_a_filter_that_hides_the_row() {
+        let mut l = List::new(vec!["apple".into(), "berry".into()]);
+        l.push('a');
+        assert_eq!(l.visible().len(), 1);
+        l.focus(1);
+        assert_eq!(l.filter(), "");
+        assert_eq!(l.selected(), Some(1));
     }
 
     #[test]

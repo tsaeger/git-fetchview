@@ -16,7 +16,8 @@ use crate::tui::theme::Theme;
 
 const HINTS: &str = "j/k move  l/enter open  h/esc back  / i search  c clear  s sort  q quit";
 /// The top level has nowhere to go back to, and offers removing.
-const REMOTE_HINTS: &str = "j/k move  l/enter open  / i search  c clear  s sort  d remove  q quit";
+const REMOTE_HINTS: &str =
+    "j/k move  l/enter open  / i search  c clear  s sort  n new  d remove  q quit";
 const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const SORT_HINTS: &str = " h/l column  r reverse  s/esc done";
 const SELECT_HINTS: &str = "space toggle  a all  enter write  / i search  c clear  s sort  q quit";
@@ -272,6 +273,22 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
             ),
             Span::styled("esc cancel", Style::new().fg(theme.dim)),
         ])
+    } else if let Some((label, text)) = app.prompt() {
+        let mut spans = vec![
+            Span::styled(format!("{label}: "), Style::new().fg(theme.accent)),
+            Span::styled(format!("{text}\u{2588}"), Style::new().fg(theme.fg)),
+        ];
+        match app.error() {
+            Some(err) => spans.push(Span::styled(
+                format!("  {err}"),
+                Style::new().fg(theme.error),
+            )),
+            None => spans.push(Span::styled(
+                "  enter add  esc cancel",
+                Style::new().fg(theme.dim),
+            )),
+        }
+        Line::from(spans)
     } else if let Some(name) = app.confirming() {
         Line::from(Span::styled(
             format!("remove {name}? y/n"),
@@ -490,6 +507,27 @@ mod tests {
     }
 
     #[test]
+    fn the_prompt_shows_its_text_a_cursor_and_any_problem() {
+        let mut app = App::new(vec![remote("origin", "https://h/o", &[])]);
+        app.step(crate::tui::keys::Command::from(Action::New));
+        for c in "ext::x".chars() {
+            app.step(crate::tui::keys::Command::from(Action::Char(c)));
+        }
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(70, 6, |f| draw(f, &app, &theme, ""));
+        assert!(
+            lines[5].contains("add url: ext::x\u{2588}"),
+            "{:?}",
+            lines[5]
+        );
+        assert!(lines[5].contains("esc"), "{:?}", lines[5]);
+        app.step(crate::tui::keys::Command::from(Action::Enter));
+        let lines = screen(70, 6, |f| draw(f, &app, &theme, ""));
+        assert!(lines[5].contains("add url: ext::x"), "{:?}", lines[5]);
+        assert!(lines[5].contains("transport"), "{:?}", lines[5]);
+    }
+
+    #[test]
     fn the_status_line_asks_before_a_removal() {
         let mut app = App::new(vec![remote("netdev/net", "https://h/n", &["merge"])]);
         app.step(crate::tui::keys::Command::from(Action::Delete));
@@ -505,6 +543,7 @@ mod tests {
     #[test]
     fn the_remote_hints_offer_d_and_fit_80_columns() {
         assert!(REMOTE_HINTS.contains("d remove"), "{REMOTE_HINTS}");
+        assert!(REMOTE_HINTS.contains("n new"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("/ i search"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.chars().count() <= 80, "{REMOTE_HINTS}");
     }

@@ -57,6 +57,8 @@ pub enum Action {
     Search,
     /// Ask to remove the collected remote under the cursor.
     Delete,
+    /// Open a prompt for a new remote's URL.
+    New,
     /// Say yes to the question being asked.
     Confirm,
     /// Clear the search / filter.
@@ -91,6 +93,8 @@ pub enum Mode {
     Sort,
     /// A yes/no question is open: `y` says yes, any other key says no.
     Confirm,
+    /// A one-line prompt is open: characters are text, like the search box.
+    Prompt,
 }
 
 /// An action with the count typed before it (`5j`, `3G`).
@@ -140,7 +144,7 @@ impl KeyParser {
         if key.kind == KeyEventKind::Release {
             return None;
         }
-        if matches!(mode, Mode::Typing | Mode::Confirm) {
+        if matches!(mode, Mode::Typing | Mode::Confirm | Mode::Prompt) {
             self.reset();
             return map(key, mode).map(Command::from);
         }
@@ -194,7 +198,7 @@ pub fn map(key: KeyEvent, mode: Mode) -> Option<Action> {
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         return match (mode, key.code) {
             (_, KeyCode::Char('c')) => Some(Action::Interrupt),
-            (Mode::Typing, _) => None,
+            (Mode::Typing | Mode::Prompt, _) => None,
             (_, KeyCode::Char('d')) => Some(Action::HalfPageDown),
             (_, KeyCode::Char('u')) => Some(Action::HalfPageUp),
             (_, KeyCode::Char('f')) => Some(Action::PageDown),
@@ -203,7 +207,7 @@ pub fn map(key: KeyEvent, mode: Mode) -> Option<Action> {
         };
     }
     match mode {
-        Mode::Typing => map_typing(key.code),
+        Mode::Typing | Mode::Prompt => map_typing(key.code),
         Mode::Normal => map_normal(key.code),
         Mode::Sort => map_sort(key.code),
         Mode::Confirm => Some(map_confirm(key.code)),
@@ -252,6 +256,7 @@ fn map_normal(code: KeyCode) -> Option<Action> {
         KeyCode::Char('/' | 'i') => Some(Action::Search),
         KeyCode::Char('c') => Some(Action::Clear),
         KeyCode::Char('d') => Some(Action::Delete),
+        KeyCode::Char('n') => Some(Action::New),
         KeyCode::Char('q') => Some(Action::Quit),
         _ => None,
     })
@@ -313,6 +318,30 @@ mod tests {
         assert_eq!(
             p.feed(key(KeyCode::Char('5')), Mode::Confirm),
             cmd(Action::Back, None)
+        );
+    }
+
+    #[test]
+    fn n_starts_a_new_url_and_the_prompt_takes_text_like_the_search_box() {
+        assert_eq!(
+            map(key(KeyCode::Char('n')), Mode::Normal),
+            Some(Action::New)
+        );
+        assert_eq!(
+            map(key(KeyCode::Char('n')), Mode::Prompt),
+            Some(Action::Char('n'))
+        );
+        assert_eq!(map(key(KeyCode::Enter), Mode::Prompt), Some(Action::Enter));
+        assert_eq!(map(key(KeyCode::Esc), Mode::Prompt), Some(Action::Back));
+        assert_eq!(
+            map(key(KeyCode::Backspace), Mode::Prompt),
+            Some(Action::Backspace)
+        );
+        // No counts: a digit is text.
+        let mut p = KeyParser::default();
+        assert_eq!(
+            p.feed(key(KeyCode::Char('5')), Mode::Prompt),
+            cmd(Action::Char('5'), None)
         );
     }
 
