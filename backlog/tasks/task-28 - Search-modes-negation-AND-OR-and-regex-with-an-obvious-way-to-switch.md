@@ -4,7 +4,7 @@ title: 'Search modes: negation, AND, OR and regex, with an obvious way to switch
 status: To Do
 assignee: []
 created_date: '2026-10-22T03:16:00Z'
-updated_date: '2026-10-22T03:20:00Z'
+updated_date: '2026-10-22T03:21:00Z'
 labels: []
 dependencies: []
 ordinal: 27000
@@ -30,5 +30,5 @@ Today the search box is a case-insensitive substring match (tui/list.rs::matches
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Decision: fzf-style simple mode. Space is AND, a leading ! negates a term, and a standalone | between terms is OR (spaces required). AND binds tighter than OR, no parentheses: 'v6.1 !rc | v6.2' means (v6.1 and not rc) or v6.2. Regex mode is the escape hatch for anything more.
+Decision: fzf-style simple mode. Space is AND, a leading ! negates a term, and a standalone | between terms is OR (spaces required). AND binds tighter than OR, no parentheses: 'v6.1 !rc | v6.2' means (v6.1 and not rc) or v6.2. Regex mode is the escape hatch for anything more. Regex engine: the regex crate (linear-time matching, so a typed pattern cannot hang the picker). Check cargo deny, MSRV 1.88.0 and the extra dependencies when adding it. Only the term parser needs a fuzz target.
 <!-- SECTION:NOTES:END -->
