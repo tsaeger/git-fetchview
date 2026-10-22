@@ -16,7 +16,7 @@ cargo xtask fuzz          # needs nightly + cargo-fuzz, see below
 cargo xtask dist          # man page + completions under target/
 cargo xtask install       # binaries, man pages, completions (see install.md)
 cargo xtask changelog     # regenerate CHANGELOG.md (needs git-cliff)
-cargo xtask prep-release
+cargo xtask prep-release 0.2.0   # bump, changelog, checks, commit, tag (see Releases)
 ```
 
 `docs` uses `markdownlint-cli2` and `mermaid`, which `package.json` pins as dev
@@ -96,13 +96,31 @@ SHA-256 files and the changelog section for the tag as the notes. The
 archives are built with the toolchain `rust-toolchain.toml` pins, outside the
 Nix shell, because a binary linked inside it points at `/nix/store`.
 
-To cut a release:
+To cut a release, start from a clean checkout of the branch you release from:
 
 ```sh
-cargo xtask prep-release                  # ci, man page, completions, publish --dry-run
-cargo xtask changelog --tag v0.2.0        # label the unreleased commits
-# bump version in Cargo.toml, commit, then:
-git tag v0.2.0 && git push origin main v0.2.0
+cargo xtask prep-release 0.2.0
+```
+
+It checks that the version is well formed and newer than the current one,
+that the tree is clean, and that the tag is free. Then it sets `version` in
+`Cargo.toml`, refreshes `Cargo.lock`, regenerates `CHANGELOG.md` for the tag,
+runs `ci` and `dist`, and makes a `chore(release): v0.2.0` commit and an
+annotated `v0.2.0` tag. `--publish-dry-run` adds a `cargo publish --dry-run`.
+If a step fails, it puts the three files back.
+
+It does not push. It prints the push command, so you can look at the commit
+first:
+
+```sh
+git show --stat HEAD
+git push origin main v0.2.0
+```
+
+To back out before pushing, delete the tag and drop the commit:
+
+```sh
+git tag -d v0.2.0 && git reset --hard HEAD~1
 ```
 
 To rehearse without publishing, run the workflow by hand from the Actions tab.
@@ -114,8 +132,8 @@ Decided, and open to change:
 
 - **Signing:** none. Each archive has a SHA-256 file. GitHub's artifact
   attestations are the next step if signatures are wanted.
-- **crates.io:** not published yet. `cargo xtask prep-release` already runs a
-  publish dry run, so it is one `cargo publish` away once the name is settled.
+- **crates.io:** not published yet. `cargo xtask prep-release --publish-dry-run`
+  runs a publish dry run, so it is one `cargo publish` away once the name is settled.
 - **Homebrew and Nix:** no tap and no package. The flake only provides
   development shells. A tap that downloads these archives is the likely
   first step, and a `packages.default` in the flake the second.
