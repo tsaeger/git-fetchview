@@ -1,10 +1,10 @@
 ---
 id: TASK-23
 title: 'TUI: promote a collected remote to a real git remote'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T03:05:00Z'
-updated_date: '2026-10-22T03:06:00Z'
+updated_date: '2026-10-22T05:07:00Z'
 labels: []
 dependencies: []
 ordinal: 10000
@@ -18,12 +18,12 @@ Press p on a collected row in the remote picker to run 'git remote add <name> <u
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 p on a collected row asks for a name, then runs git remote add and the row becomes a real remote
-- [ ] #2 p on a real remote does nothing but show a note
-- [ ] #3 A name that is invalid or already used shows git's reason and keeps the prompt open
-- [ ] #4 The collected entry is left in its file, and removing the real remote later brings the row back
-- [ ] #5 Tests cover the prompt, the refusal and the Cmd's printed form
-- [ ] #6 Keys, README and docs/usage.md are updated
+- [x] #1 p on a collected row asks for a name, then runs git remote add and the row becomes a real remote
+- [x] #2 p on a real remote does nothing but show a note
+- [x] #3 A name that is invalid or already used shows git's reason and keeps the prompt open
+- [x] #4 The collected entry is left in its file, and removing the real remote later brings the row back
+- [x] #5 Tests cover the prompt, the refusal and the Cmd's printed form
+- [x] #6 Keys, README and docs/usage.md are updated
 <!-- AC:END -->
 
 ## Implementation Notes
