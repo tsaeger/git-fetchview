@@ -9,7 +9,7 @@ use crate::git::{Remote, RemoteRef, redact_url};
 use crate::last::Last;
 use crate::remotes::entry::{Entry, key as repo_key, validate_url};
 use crate::tui::keys::{Action, Command, Mode};
-use crate::tui::list::{List, SortKeys, SortOrder};
+use crate::tui::list::{List, SortColumn, SortKeys};
 
 /// Which list is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -220,7 +220,6 @@ pub struct App {
     ref_list: List,
     level: Level,
     typing: bool,
-    sorting: bool,
     error: Option<String>,
     notice: Option<String>,
     viewport: usize,
@@ -259,7 +258,6 @@ impl App {
             ref_list: List::default(),
             level: Level::Remotes,
             typing: false,
-            sorting: false,
             error: None,
             notice: None,
             viewport: 10,
@@ -370,12 +368,6 @@ impl App {
         self.level
     }
 
-    /// True while a sort column is being chosen.
-    #[must_use]
-    pub fn sorting(&self) -> bool {
-        self.sorting
-    }
-
     /// Which keymap is in force.
     #[must_use]
     pub fn mode(&self) -> Mode {
@@ -387,8 +379,6 @@ impl App {
             Mode::Prompt
         } else if self.typing {
             Mode::Typing
-        } else if self.sorting {
-            Mode::Sort
         } else {
             Mode::Normal
         }
@@ -488,15 +478,12 @@ impl App {
         if self.list_mut().motion(action, count, viewport) {
             return Flow::Continue;
         }
-        if self.sorting {
-            self.update_sorting(action);
-            return Flow::Continue;
-        }
         match action {
             Action::Search => self.typing = true,
             Action::Clear => self.list_mut().clear(),
-            Action::Sort => self.sorting = true,
-            Action::Reverse => self.list_mut().toggle_reverse(),
+            Action::Sort => self.list_mut().cycle_sort(),
+            Action::ColumnPrev => self.list_mut().move_column(-1),
+            Action::ColumnNext => self.list_mut().move_column(1),
             Action::Back => self.back(),
             Action::Delete => self.ask_remove(),
             Action::New => self.open_prompt(PromptKind::AddUrl),
@@ -513,8 +500,6 @@ impl App {
             | Action::Backspace
             | Action::Toggle
             | Action::ToggleAll
-            | Action::ColumnPrev
-            | Action::ColumnNext
             | Action::Down
             | Action::Up
             | Action::Top
@@ -872,17 +857,6 @@ impl App {
         }
     }
 
-    fn update_sorting(&mut self, action: Action) {
-        match action {
-            Action::ColumnPrev => self.list_mut().shift_sort(-1),
-            Action::ColumnNext => self.list_mut().shift_sort(1),
-            Action::Reverse => self.list_mut().toggle_reverse(),
-            // Leaving the mode is all `s`, Esc and Enter do here.
-            Action::Sort | Action::Back | Action::Enter => self.sorting = false,
-            _ => {}
-        }
-    }
-
     fn update_typing(&mut self, action: Action) {
         match action {
             Action::Char(c) => self.list_mut().push(c),
@@ -896,7 +870,6 @@ impl App {
 
     /// Drop out one level. At the top level this does nothing.
     fn back(&mut self) {
-        self.sorting = false;
         if self.level == Level::Refs {
             self.level = Level::Remotes;
             self.chosen = None;
@@ -938,8 +911,7 @@ impl App {
                 group: 0,
             })
             .collect();
-        self.ref_list =
-            List::with_cells(cells, keys).with_cycle(vec![SortOrder::Default, SortOrder::Label]);
+        self.ref_list = List::with_cells(cells, keys).with_columns(vec![SortColumn::Label]);
         self.refs = refs;
     }
 
@@ -1000,6 +972,7 @@ impl App {
 mod tests {
     use super::*;
     use crate::tui::keys::{Command, Mode};
+    use crate::tui::list::Direction;
 
     fn app() -> App {
         App::new(vec![
@@ -1074,9 +1047,8 @@ mod tests {
         assert_eq!(a.list().cursor(), 6);
     }
 
-    #[test]
-    fn sort_mode_moves_across_columns_and_keeps_real_remotes_on_top() {
-        let mut a = App::new(vec![
+    fn three_remotes() -> App {
+        App::new(vec![
             Remote {
                 name: "origin".into(),
                 url: "https://z/o".into(),
@@ -1092,80 +1064,68 @@ mod tests {
                 url: "https://b/a".into(),
                 tags: vec!["merge".into()],
             },
-        ]);
+        ])
+    }
+
+    #[test]
+    fn s_cycles_the_column_under_the_cursor_and_keeps_real_remotes_on_top() {
+        let mut a = three_remotes();
         a.update(Action::Sort, &mut refs);
-        assert!(a.sorting());
-        a.update(Action::ColumnNext, &mut refs);
+        assert_eq!(a.list().sort(), Some((SortColumn::Label, Direction::Asc)));
         assert_eq!(a.list().visible(), [0, 2, 1]);
-        a.update(Action::ColumnNext, &mut refs);
+        a.update(Action::Sort, &mut refs);
+        assert_eq!(a.list().sort(), Some((SortColumn::Label, Direction::Desc)));
         assert_eq!(a.list().visible(), [0, 1, 2]);
-        assert_eq!(a.list().sort_order().name(), "url");
+        a.update(Action::Sort, &mut refs);
+        assert_eq!(a.list().sort(), None);
+        assert_eq!(a.list().visible(), [0, 1, 2]);
     }
 
     #[test]
-    fn r_reverses_inside_groups_and_keeps_real_remotes_on_top() {
-        let mut a = App::new(vec![
-            Remote {
-                name: "origin".into(),
-                url: "https://z/o".into(),
-                tags: Vec::new(),
-            },
-            Remote {
-                name: "alpha".into(),
-                url: "https://b/a".into(),
-                tags: vec!["merge".into()],
-            },
-            Remote {
-                name: "zeta".into(),
-                url: "https://a/z".into(),
-                tags: vec!["merge".into()],
-            },
-        ]);
-        a.update(Action::Reverse, &mut refs);
-        assert_eq!(a.list().visible(), [0, 2, 1]);
-        assert!(a.list().reversed());
+    fn the_column_keys_move_the_cursor_without_sorting_or_changing_level() {
+        let mut a = three_remotes();
+        a.update(Action::ColumnNext, &mut refs);
+        assert_eq!(a.list().column(), SortColumn::Url);
+        assert_eq!(a.list().sort(), None);
+        assert_eq!(a.level(), Level::Remotes);
+        a.update(Action::ColumnPrev, &mut refs);
+        assert_eq!(a.list().column(), SortColumn::Label);
+        assert_eq!(a.level(), Level::Remotes);
+        assert_eq!(a.mode(), Mode::Normal);
     }
 
     #[test]
-    fn the_refs_list_has_default_and_name_columns_only() {
+    fn s_on_another_column_sorts_that_one() {
+        let mut a = three_remotes();
+        a.update(Action::Sort, &mut refs);
+        a.update(Action::ColumnNext, &mut refs);
+        assert_eq!(a.list().sort(), Some((SortColumn::Label, Direction::Asc)));
+        a.update(Action::Sort, &mut refs);
+        assert_eq!(a.list().sort(), Some((SortColumn::Url, Direction::Asc)));
+        assert_eq!(a.list().visible(), [0, 1, 2]);
+    }
+
+    #[test]
+    fn the_refs_list_sorts_by_name_only() {
         let mut a = app();
         a.update(Action::Enter, &mut refs);
         assert_eq!(a.level(), Level::Refs);
         assert_eq!(a.list().visible(), [0, 1]);
+        a.update(Action::ColumnNext, &mut refs);
+        assert_eq!(a.list().column(), SortColumn::Label);
         a.update(Action::Sort, &mut refs);
-        a.update(Action::ColumnNext, &mut refs);
-        assert_eq!(a.list().sort_order().name(), "label");
         assert_eq!(a.list().visible(), [1, 0]);
-        a.update(Action::ColumnNext, &mut refs);
-        assert_eq!(a.list().sort_order().name(), "label");
-        a.update(Action::Reverse, &mut refs);
+        a.update(Action::Sort, &mut refs);
         assert_eq!(a.list().visible(), [0, 1]);
     }
 
     #[test]
-    fn esc_and_enter_leave_sort_mode_without_going_back_or_in() {
-        let mut a = app();
+    fn the_sort_stays_in_the_same_list_after_esc_and_enter() {
+        let mut a = three_remotes();
         a.update(Action::Sort, &mut refs);
         a.update(Action::Back, &mut refs);
-        assert!(!a.sorting());
         assert_eq!(a.level(), Level::Remotes);
-        a.update(Action::Sort, &mut refs);
-        a.update(Action::Enter, &mut refs);
-        assert!(!a.sorting());
-        assert_eq!(a.level(), Level::Remotes);
-        assert_eq!(a.mode(), Mode::Normal);
-        a.update(Action::Sort, &mut refs);
-        assert_eq!(a.mode(), Mode::Sort);
-    }
-
-    #[test]
-    fn s_again_leaves_sort_mode_and_motions_still_work_inside_it() {
-        let mut a = app();
-        a.update(Action::Sort, &mut refs);
-        a.update(Action::Down, &mut refs);
-        assert_eq!(a.list().cursor(), 1);
-        a.update(Action::Sort, &mut refs);
-        assert!(!a.sorting());
+        assert_eq!(a.list().sort(), Some((SortColumn::Label, Direction::Asc)));
     }
 
     #[test]

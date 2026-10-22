@@ -10,37 +10,37 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState};
 
 use crate::tui::app::{App, Level};
-use crate::tui::list::{List, SortOrder};
+use crate::tui::list::{Direction, List, SortColumn};
 use crate::tui::select::Select;
 use crate::tui::theme::Theme;
 
 /// Short, because the hidden-refs count can come first on the same line.
-const HINTS: &str = "j/k move  l open  h back  / i search  s sort  q quit";
+const HINTS: &str = "\u{21b5} open  esc back  h/l col  s sort  / i search  q quit";
 /// The top level has nowhere to go back to, and offers removing.
 const REMOTE_HINTS: &str =
-    "l open  / i search  s sort  n new  o browse  A scan  p promote  d remove  q quit";
+    "/ i search  h/l col  s sort  n new  o once  A scan  p promote  d remove  q quit";
 const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const SORT_HINTS: &str = " h/l column  r reverse  s/esc done";
-const SELECT_HINTS: &str = "space toggle  a all  enter write  / i search  c clear  s sort  q quit";
+const SELECT_HINTS: &str =
+    "space toggle  a all  enter write  / i search  c clear  h/l col  s sort  q quit";
 
 fn base(theme: &Theme) -> Style {
     Style::new().fg(theme.fg).bg(theme.bg)
 }
 
-/// A column header and the sort order that picks it, if it can be sorted.
-type Header = (&'static str, Option<SortOrder>);
+/// A column header and the sort column it stands for, if it can be sorted.
+type Header = (&'static str, Option<SortColumn>);
 
 const REMOTE_HEADERS: [Header; 3] = [
-    ("name", Some(SortOrder::Label)),
-    ("url", Some(SortOrder::Url)),
-    ("tags", Some(SortOrder::Tags)),
+    ("name", Some(SortColumn::Label)),
+    ("url", Some(SortColumn::Url)),
+    ("tags", Some(SortColumn::Tags)),
 ];
-const REF_HEADERS: [Header; 2] = [("name", Some(SortOrder::Label)), ("oid", None)];
+const REF_HEADERS: [Header; 2] = [("name", Some(SortColumn::Label)), ("oid", None)];
 const SELECT_HEADERS: [Header; 4] = [
     ("", None),
-    ("name", Some(SortOrder::Label)),
-    ("url", Some(SortOrder::Url)),
-    ("tags", Some(SortOrder::Tags)),
+    ("name", Some(SortColumn::Label)),
+    ("url", Some(SortColumn::Url)),
+    ("tags", Some(SortColumn::Tags)),
 ];
 
 /// Columns before the last one stop growing here; the last takes what is left.
@@ -63,15 +63,15 @@ fn column_widths(headers: &[Header], rows: &[Vec<String>]) -> Vec<usize> {
         .collect()
 }
 
-/// A header title, with a direction arrow when it is the sorted column.
+/// A header title, with an arrow when it is the sorted column.
 fn header_text(
     title: &str,
-    column: Option<SortOrder>,
-    active: SortOrder,
-    reversed: bool,
+    column: Option<SortColumn>,
+    sorted: Option<(SortColumn, Direction)>,
 ) -> String {
-    match column {
-        Some(c) if c == active && reversed => format!("{title} \u{2193}"),
+    match (column, sorted) {
+        (Some(c), Some((s, Direction::Asc))) if c == s => format!("{title} \u{2191}"),
+        (Some(c), Some((s, Direction::Desc))) if c == s => format!("{title} \u{2193}"),
         _ => title.to_owned(),
     }
 }
@@ -110,19 +110,17 @@ fn render_table(
     });
 
     let header = Row::new(headers.iter().map(|&(title, column)| {
-        let sorted = column == Some(list.sort_order());
-        let style = if sorted {
+        let sorted = column.is_some() && list.sort().map(|(c, _)| c) == column;
+        let mut style = if sorted {
             Style::new().fg(theme.accent).add_modifier(Modifier::BOLD)
         } else {
             Style::new().fg(theme.dim)
         };
-        Cell::from(header_text(
-            title,
-            column,
-            list.sort_order(),
-            list.reversed(),
-        ))
-        .style(style)
+        // The column cursor: the column `s` will sort.
+        if column == Some(list.column()) {
+            style = style.add_modifier(Modifier::UNDERLINED);
+        }
+        Cell::from(header_text(title, column, list.sort())).style(style)
     }));
     let body = rows.into_iter().map(|r| Row::new(r.cells).style(r.style));
 
@@ -140,15 +138,6 @@ fn render_table(
     frame.render_stateful_widget(table, area, &mut state);
 }
 
-/// `sort: label  ` for the status line, or nothing in the default order.
-fn sort_note(order: SortOrder, reversed: bool) -> Option<String> {
-    if order == SortOrder::Default && !reversed {
-        return None;
-    }
-    let arrow = if reversed { " \u{2193}" } else { "" };
-    Some(format!("sort: {}{arrow}  ", order.name()))
-}
-
 /// `5g  ` for keys typed but not finished, or nothing.
 fn pending_note(pending: &str) -> Option<String> {
     (!pending.is_empty()).then(|| format!("{pending}  "))
@@ -161,39 +150,6 @@ fn pending_span<'a>(pending: &str, theme: &Theme) -> Option<Span<'a>> {
             Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
         )
     })
-}
-
-/// The columns as `(text, active)`, with the direction on the active one.
-fn sort_bar_parts(columns: &[SortOrder], active: SortOrder, reversed: bool) -> Vec<(String, bool)> {
-    columns
-        .iter()
-        .map(|&c| {
-            if c == active {
-                let arrow = if reversed { " \u{2193}" } else { "" };
-                (format!("[{}{arrow}]", c.name()), true)
-            } else {
-                (c.name().to_owned(), false)
-            }
-        })
-        .collect()
-}
-
-fn sort_bar<'a>(list: &List, theme: &Theme) -> Vec<Span<'a>> {
-    let mut spans = vec![Span::styled("sort ", Style::new().fg(theme.accent))];
-    for (text, active) in sort_bar_parts(list.columns(), list.sort_order(), list.reversed()) {
-        let style = if active {
-            Style::new().fg(theme.accent).add_modifier(Modifier::BOLD)
-        } else {
-            Style::new().fg(theme.dim)
-        };
-        spans.push(Span::styled(format!("{text} "), style));
-    }
-    spans.push(Span::styled(SORT_HINTS, Style::new().fg(theme.dim)));
-    spans
-}
-
-fn sort_span<'a>(order: SortOrder, reversed: bool, theme: &Theme) -> Option<Span<'a>> {
-    sort_note(order, reversed).map(|note| Span::styled(note, Style::new().fg(theme.accent)))
 }
 
 /// The search box: always on the top line, so the filter in force is never
@@ -241,7 +197,7 @@ fn typing_hints(theme: &Theme) -> Line<'static> {
 }
 
 /// The bottom line of the picker: whatever the app is busy with or asking,
-/// else the sort, the hidden count and the key hints.
+/// else the hidden count and the key hints.
 fn status_line<'a>(app: &'a App, theme: &Theme, pending: &str) -> Line<'a> {
     if let Some(name) = app.loading() {
         let frame = SPINNER[app.spinner() % SPINNER.len()];
@@ -288,8 +244,6 @@ fn status_line<'a>(app: &'a App, theme: &Theme, pending: &str) -> Line<'a> {
         Line::from(Span::styled(err.to_owned(), Style::new().fg(theme.error)))
     } else if app.typing() {
         typing_hints(theme)
-    } else if app.sorting() {
-        Line::from(sort_bar(app.list(), theme))
     } else if let Some(notice) = app.notice() {
         Line::from(Span::styled(
             notice.to_owned(),
@@ -297,11 +251,6 @@ fn status_line<'a>(app: &'a App, theme: &Theme, pending: &str) -> Line<'a> {
         ))
     } else {
         let mut spans: Vec<Span<'_>> = pending_span(pending, theme).into_iter().collect();
-        spans.extend(sort_span(
-            app.list().sort_order(),
-            app.list().reversed(),
-            theme,
-        ));
         if app.level() == Level::Refs && app.hidden() > 0 {
             spans.push(Span::styled(
                 format!(
@@ -407,8 +356,6 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pendin
 
     let line = if select.typing() {
         typing_hints(theme)
-    } else if select.sorting() {
-        Line::from(sort_bar(select.list(), theme))
     } else {
         let counts = format!(
             "{} checked of {}  ",
@@ -417,11 +364,6 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pendin
         );
         let mut spans: Vec<Span<'_>> = pending_span(pending, theme).into_iter().collect();
         spans.push(Span::styled(counts, Style::new().fg(theme.accent)));
-        spans.extend(sort_span(
-            select.list().sort_order(),
-            select.list().reversed(),
-            theme,
-        ));
         spans.push(Span::styled(SELECT_HINTS, Style::new().fg(theme.dim)));
         Line::from(spans)
     };
@@ -440,46 +382,9 @@ mod tests {
     use crate::tui::theme::ThemeName;
 
     #[test]
-    fn the_sort_bar_marks_the_active_column_and_the_direction() {
-        let columns = [
-            SortOrder::Default,
-            SortOrder::Label,
-            SortOrder::Url,
-            SortOrder::Tags,
-        ];
-        let parts = sort_bar_parts(&columns, SortOrder::Label, true);
-        assert_eq!(
-            parts,
-            [
-                ("default".to_owned(), false),
-                ("[label \u{2193}]".to_owned(), true),
-                ("url".to_owned(), false),
-                ("tags".to_owned(), false),
-            ]
-        );
-    }
-
-    #[test]
     fn pending_input_shows_in_the_status_line() {
         assert_eq!(pending_note(""), None);
         assert_eq!(pending_note("5g"), Some("5g  ".to_owned()));
-    }
-
-    #[test]
-    fn the_status_line_names_a_non_default_or_reversed_sort() {
-        assert_eq!(sort_note(SortOrder::Default, false), None);
-        assert_eq!(
-            sort_note(SortOrder::Label, false),
-            Some("sort: label  ".to_owned())
-        );
-        assert_eq!(
-            sort_note(SortOrder::Default, true),
-            Some("sort: default \u{2193}  ".to_owned())
-        );
-        assert_eq!(
-            sort_note(SortOrder::Url, true),
-            Some("sort: url \u{2193}  ".to_owned())
-        );
     }
 
     /// Draw into a test terminal and return each line of the screen.
@@ -611,7 +516,9 @@ mod tests {
         assert!(REMOTE_HINTS.contains("d remove"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("n new"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("p promote"), "{REMOTE_HINTS}");
-        assert!(REMOTE_HINTS.contains("o browse"), "{REMOTE_HINTS}");
+        assert!(REMOTE_HINTS.contains("o once"), "{REMOTE_HINTS}");
+        assert!(REMOTE_HINTS.contains("h/l col"), "{REMOTE_HINTS}");
+        assert!(REMOTE_HINTS.contains("s sort"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("A scan"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("/ i search"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.chars().count() <= 80, "{REMOTE_HINTS}");
@@ -627,21 +534,72 @@ mod tests {
         assert!(text.contains("https://dev@h/o.git"), "{text}");
     }
 
-    #[test]
-    fn the_header_marks_the_sorted_column_and_direction() {
-        let mut app = App::new(vec![remote("a", "https://h/a", &[])]);
+    fn step(app: &mut App, actions: &[Action]) {
         let mut no_refs = |_: &Remote| Ok(Loaded::default());
-        for action in [
-            Action::Sort,
-            Action::ColumnNext,
-            Action::ColumnNext,
-            Action::Reverse,
-        ] {
+        for &action in actions {
             app.update(action, &mut no_refs);
         }
+    }
+
+    #[test]
+    fn the_header_shows_an_arrow_on_the_sorted_column_and_none_otherwise() {
+        let mut app = App::new(vec![remote("a", "https://h/a", &[])]);
         let theme = Theme::from(ThemeName::default());
+        let header = |app: &App| screen(60, 6, |f| draw(f, app, &theme, ""))[2].clone();
+        assert!(!header(&app).contains('\u{2191}'), "{:?}", header(&app));
+        assert!(!header(&app).contains('\u{2193}'), "{:?}", header(&app));
+        step(&mut app, &[Action::ColumnNext, Action::Sort]);
+        assert!(header(&app).contains("url \u{2191}"), "{:?}", header(&app));
+        assert!(!header(&app).contains("name \u{2191}"));
+        step(&mut app, &[Action::Sort]);
+        assert!(header(&app).contains("url \u{2193}"), "{:?}", header(&app));
+        step(&mut app, &[Action::Sort]);
+        assert!(!header(&app).contains('\u{2191}'), "{:?}", header(&app));
+        assert!(!header(&app).contains('\u{2193}'), "{:?}", header(&app));
+    }
+
+    #[test]
+    fn the_sort_stays_on_its_column_while_the_column_cursor_moves() {
+        let mut app = App::new(vec![remote("a", "https://h/a", &[])]);
+        let theme = Theme::from(ThemeName::default());
+        step(
+            &mut app,
+            &[Action::Sort, Action::ColumnNext, Action::ColumnNext],
+        );
         let lines = screen(60, 6, |f| draw(f, &app, &theme, ""));
-        assert!(lines[2].contains("url \u{2193}"), "{:?}", lines[2]);
+        assert!(lines[2].contains("name \u{2191}"), "{:?}", lines[2]);
+    }
+
+    #[test]
+    fn the_header_underlines_the_column_under_the_cursor() {
+        let mut app = App::new(vec![remote("a", "https://h/a", &[])]);
+        let theme = Theme::from(ThemeName::default());
+        let underlined = |app: &App| -> Vec<bool> {
+            let mut terminal = ratatui::Terminal::new(TestBackend::new(60, 6)).unwrap();
+            terminal.draw(|f| draw(f, app, &theme, "")).unwrap();
+            let buffer = terminal.backend().buffer().clone();
+            let line: String = (0..60).map(|x| buffer[(x, 2)].symbol()).collect();
+            ["name", "url", "tags"]
+                .iter()
+                .map(|title| {
+                    let x = u16::try_from(line.find(title).unwrap()).unwrap();
+                    buffer[(x, 2)].modifier.contains(Modifier::UNDERLINED)
+                })
+                .collect()
+        };
+        assert_eq!(underlined(&app), [true, false, false]);
+        step(&mut app, &[Action::ColumnNext]);
+        assert_eq!(underlined(&app), [false, true, false]);
+    }
+
+    #[test]
+    fn the_bottom_line_does_not_report_the_sort() {
+        let mut app = App::new(vec![remote("a", "https://h/a", &[])]);
+        let theme = Theme::from(ThemeName::default());
+        step(&mut app, &[Action::Sort]);
+        let lines = screen(80, 6, |f| draw(f, &app, &theme, ""));
+        assert!(!lines[5].contains("sort:"), "{:?}", lines[5]);
+        assert!(lines[5].contains("s sort"), "{:?}", lines[5]);
     }
 
     #[test]
@@ -714,6 +672,7 @@ mod tests {
     fn the_key_hints_name_both_search_keys_and_fit_80_columns() {
         for hints in [HINTS, SELECT_HINTS] {
             assert!(hints.contains("/ i search"), "{hints}");
+            assert!(hints.contains("h/l col"), "{hints}");
             assert!(hints.chars().count() <= 80, "{hints}");
         }
     }

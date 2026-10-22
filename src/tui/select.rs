@@ -41,7 +41,6 @@ pub struct Select {
     have: Vec<bool>,
     checked: BTreeSet<usize>,
     typing: bool,
-    sorting: bool,
     viewport: usize,
 }
 
@@ -66,7 +65,6 @@ impl Select {
             have,
             checked: BTreeSet::new(),
             typing: false,
-            sorting: false,
             viewport: 10,
         }
     }
@@ -77,19 +75,11 @@ impl Select {
         &self.list
     }
 
-    /// True while a sort column is being chosen.
-    #[must_use]
-    pub fn sorting(&self) -> bool {
-        self.sorting
-    }
-
     /// Which keymap is in force.
     #[must_use]
     pub fn mode(&self) -> Mode {
         if self.typing {
             Mode::Typing
-        } else if self.sorting {
-            Mode::Sort
         } else {
             Mode::Normal
         }
@@ -148,15 +138,12 @@ impl Select {
         if self.list.motion(action, count, self.viewport) {
             return SelectFlow::Continue;
         }
-        if self.sorting {
-            self.update_sorting(action);
-            return SelectFlow::Continue;
-        }
         match action {
             Action::Search => self.typing = true,
             Action::Clear => self.list.clear(),
-            Action::Sort => self.sorting = true,
-            Action::Reverse => self.list.toggle_reverse(),
+            Action::Sort => self.list.cycle_sort(),
+            Action::ColumnPrev => self.list.move_column(-1),
+            Action::ColumnNext => self.list.move_column(1),
             Action::Toggle => {
                 if let Some(i) = self.list.selected() {
                     self.toggle(i);
@@ -177,8 +164,6 @@ impl Select {
             | Action::Confirm
             | Action::Char(_)
             | Action::Backspace
-            | Action::ColumnPrev
-            | Action::ColumnNext
             | Action::Down
             | Action::Up
             | Action::Top
@@ -189,17 +174,6 @@ impl Select {
             | Action::PageUp => {}
         }
         SelectFlow::Continue
-    }
-
-    fn update_sorting(&mut self, action: Action) {
-        match action {
-            Action::ColumnPrev => self.list.shift_sort(-1),
-            Action::ColumnNext => self.list.shift_sort(1),
-            Action::Reverse => self.list.toggle_reverse(),
-            // Leaving the mode is all `s`, Esc and Enter do here.
-            Action::Sort | Action::Back | Action::Enter => self.sorting = false,
-            _ => {}
-        }
     }
 
     fn update_typing(&mut self, action: Action) {
@@ -348,15 +322,11 @@ mod tests {
     }
 
     #[test]
-    fn sort_mode_leaves_on_esc_enter_or_s_without_confirming() {
+    fn sorting_has_no_mode_and_enter_still_confirms() {
         let mut s = Select::new(rows());
         s.update(Action::Sort);
-        assert_eq!(s.mode(), Mode::Sort);
-        assert_eq!(s.update(Action::Enter), SelectFlow::Continue);
-        assert!(!s.sorting());
-        s.update(Action::Sort);
-        s.update(Action::Back);
-        assert!(!s.sorting());
+        assert_eq!(s.mode(), Mode::Normal);
+        assert_eq!(s.update(Action::Enter), SelectFlow::Done(Vec::new()));
     }
 
     #[test]
@@ -384,25 +354,28 @@ mod tests {
     fn s_sorts_new_rows_and_keeps_present_rows_last() {
         let mut s = Select::new(rows());
         s.update(Action::Sort);
-        assert!(s.sorting());
-        s.update(Action::ColumnNext);
         assert_eq!(s.list().visible(), [0, 2, 1]);
-        s.update(Action::ColumnNext);
-        assert_eq!(s.list().visible(), [0, 2, 1]);
-    }
-
-    #[test]
-    fn r_reverses_new_rows_and_keeps_present_rows_last() {
-        let mut s = Select::new(rows());
-        s.update(Action::Reverse);
+        s.update(Action::Sort);
         assert_eq!(s.list().visible(), [2, 0, 1]);
+        s.update(Action::Sort);
+        assert_eq!(s.list().visible(), [0, 1, 2]);
     }
 
     #[test]
-    fn checks_survive_a_reverse_and_the_cursor_goes_to_the_top() {
+    fn the_column_keys_move_the_cursor_and_s_sorts_that_column() {
+        let mut s = Select::new(rows());
+        s.update(Action::ColumnNext);
+        assert_eq!(s.list().sort(), None);
+        s.update(Action::Sort);
+        assert_eq!(s.list().visible(), [0, 2, 1]);
+    }
+
+    #[test]
+    fn checks_survive_a_descending_sort_and_the_cursor_goes_to_the_top() {
         let mut s = Select::new(rows());
         s.update(Action::Toggle);
-        s.update(Action::Reverse);
+        s.update(Action::Sort);
+        s.update(Action::Sort);
         assert!(s.is_checked(0));
         assert_eq!(s.list().cursor(), 0);
         assert_eq!(s.list().selected(), Some(2));
@@ -415,8 +388,6 @@ mod tests {
         s.update(Action::Down);
         s.update(Action::Toggle);
         s.update(Action::Sort);
-        s.update(Action::ColumnNext);
-        s.update(Action::ColumnNext);
         assert!(s.is_checked(2));
         assert_eq!(s.list().selected(), Some(2));
     }

@@ -17,9 +17,9 @@ write them, then pick one with `git fetchview`.
 
 ![Sorting refs: git's text order, then natural order, then reversed](sorting.gif)
 
-Git lists tags as text, so `v6.10` lands before `v6.2`. `s` opens sort mode, `h`
-and `l` pick the column, and `r` reverses. The header shows an arrow on the
-sorted column.
+Git lists tags as text, so `v6.10` lands before `v6.2`. `s` sorts the column under
+the column cursor (`h` and `l` move it): ascending, descending, then off. The
+header shows an arrow on the sorted column.
 
 ## Collecting from merges
 

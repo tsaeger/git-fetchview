@@ -11,12 +11,13 @@
 //! | `5j` / `5k`             | move 5 rows (a count works on moves) |
 //! | `Ctrl-d` / `Ctrl-u`     | half a page down / up               |
 //! | `Ctrl-f` / `Ctrl-b`     | a page down / up (also PageDown/Up) |
-//! | `l` / `Right` / `Enter` | drop in (select, go to next level)  |
-//! | `h` / `Left` / `Esc`    | drop out (never exits at top level) |
+//! | `Enter`                 | drop in (select, go to next level)  |
+//! | `Esc`                   | drop out (never exits at top level) |
+//! | `h` / `Left`            | column cursor one column left       |
+//! | `l` / `Right`           | column cursor one column right      |
 //! | `/` / `i`               | edit the search box                 |
 //! | `c`                     | clear search / filter               |
-//! | `s`                     | sort mode: `h`/`l` pick the column, `r` reverses, `s`/`Esc` done |
-//! | `r`                     | reverse the sort order              |
+//! | `s`                     | sort the column: ascending, descending, none |
 //! | `Space`                 | toggle a row (multi-select)         |
 //! | `a`                     | toggle all visible rows (multi-select) |
 //! | `q` / `Ctrl-c`          | quit, from any level                |
@@ -73,13 +74,11 @@ pub enum Action {
     Confirm,
     /// Clear the search / filter.
     Clear,
-    /// Cycle the sort order.
+    /// Sort the column under the column cursor: ascending, descending, none.
     Sort,
-    /// Flip the sort order.
-    Reverse,
-    /// Move the sort to the previous column (in sort mode).
+    /// Move the column cursor one column left.
     ColumnPrev,
-    /// Move the sort to the next column (in sort mode).
+    /// Move the column cursor one column right.
     ColumnNext,
     /// Toggle the row under the cursor (multi-select).
     Toggle,
@@ -99,8 +98,6 @@ pub enum Mode {
     Normal,
     /// Typing a search: characters are text.
     Typing,
-    /// Choosing a sort column: `h` and `l` move between columns.
-    Sort,
     /// A yes/no question is open: `y` says yes, any other key says no.
     Confirm,
     /// A one-line prompt is open: characters are text, like the search box.
@@ -225,7 +222,6 @@ pub fn map(key: KeyEvent, mode: Mode) -> Option<Action> {
     match mode {
         Mode::Typing | Mode::Prompt => map_typing(key.code),
         Mode::Normal => map_normal(key.code),
-        Mode::Sort => map_sort(key.code),
         Mode::Confirm => Some(map_confirm(key.code)),
         Mode::Menu => Some(map_menu(key.code)),
     }
@@ -257,7 +253,7 @@ fn map_typing(code: KeyCode) -> Option<Action> {
     }
 }
 
-/// Motions shared by browsing and sort mode.
+/// Motions for browsing.
 fn map_motion(code: KeyCode) -> Option<Action> {
     match code {
         KeyCode::Char('j') | KeyCode::Down => Some(Action::Down),
@@ -272,12 +268,13 @@ fn map_motion(code: KeyCode) -> Option<Action> {
 
 fn map_normal(code: KeyCode) -> Option<Action> {
     map_motion(code).or(match code {
-        KeyCode::Enter | KeyCode::Char('l') | KeyCode::Right => Some(Action::Enter),
-        KeyCode::Esc | KeyCode::Char('h') | KeyCode::Left => Some(Action::Back),
+        KeyCode::Enter => Some(Action::Enter),
+        KeyCode::Esc => Some(Action::Back),
+        KeyCode::Char('h') | KeyCode::Left => Some(Action::ColumnPrev),
+        KeyCode::Char('l') | KeyCode::Right => Some(Action::ColumnNext),
         KeyCode::Char(' ') => Some(Action::Toggle),
         KeyCode::Char('a') => Some(Action::ToggleAll),
         KeyCode::Char('s') => Some(Action::Sort),
-        KeyCode::Char('r') => Some(Action::Reverse),
         KeyCode::Char('/' | 'i') => Some(Action::Search),
         KeyCode::Char('c') => Some(Action::Clear),
         KeyCode::Char('d') => Some(Action::Delete),
@@ -286,19 +283,6 @@ fn map_normal(code: KeyCode) -> Option<Action> {
         KeyCode::Char('o') => Some(Action::Open),
         KeyCode::Char('A') => Some(Action::Scan),
         KeyCode::Char('H') => Some(Action::ShowHidden),
-        KeyCode::Char('q') => Some(Action::Quit),
-        _ => None,
-    })
-}
-
-fn map_sort(code: KeyCode) -> Option<Action> {
-    map_motion(code).or(match code {
-        KeyCode::Char('h') | KeyCode::Left => Some(Action::ColumnPrev),
-        KeyCode::Char('l') | KeyCode::Right => Some(Action::ColumnNext),
-        KeyCode::Char('r') => Some(Action::Reverse),
-        KeyCode::Char('s') => Some(Action::Sort),
-        KeyCode::Esc => Some(Action::Back),
-        KeyCode::Enter => Some(Action::Enter),
         KeyCode::Char('q') => Some(Action::Quit),
         _ => None,
     })
@@ -642,51 +626,24 @@ mod tests {
     }
 
     #[test]
-    fn sort_mode_remaps_h_and_l_to_columns_and_keeps_the_motions() {
-        let m = |code| map(key(code), Mode::Sort);
+    fn h_and_l_and_the_arrows_move_the_column_cursor() {
+        let m = |code| map(key(code), Mode::Normal);
         assert_eq!(m(KeyCode::Char('h')), Some(Action::ColumnPrev));
         assert_eq!(m(KeyCode::Left), Some(Action::ColumnPrev));
         assert_eq!(m(KeyCode::Char('l')), Some(Action::ColumnNext));
         assert_eq!(m(KeyCode::Right), Some(Action::ColumnNext));
-        assert_eq!(m(KeyCode::Char('r')), Some(Action::Reverse));
-        assert_eq!(m(KeyCode::Char('s')), Some(Action::Sort));
-        assert_eq!(m(KeyCode::Esc), Some(Action::Back));
+    }
+
+    #[test]
+    fn only_enter_and_esc_change_levels() {
+        let m = |code| map(key(code), Mode::Normal);
         assert_eq!(m(KeyCode::Enter), Some(Action::Enter));
-        assert_eq!(m(KeyCode::Char('j')), Some(Action::Down));
-        assert_eq!(m(KeyCode::Char('G')), Some(Action::Bottom));
-        assert_eq!(m(KeyCode::Char('q')), Some(Action::Quit));
+        assert_eq!(m(KeyCode::Esc), Some(Action::Back));
     }
 
     #[test]
-    fn sort_mode_ignores_keys_that_would_change_the_list() {
-        for code in [
-            KeyCode::Char('/'),
-            KeyCode::Char('c'),
-            KeyCode::Char(' '),
-            KeyCode::Char('a'),
-        ] {
-            assert_eq!(map(key(code), Mode::Sort), None, "{code:?}");
-        }
-    }
-
-    #[test]
-    fn outside_sort_mode_h_and_l_still_go_out_and_in() {
-        assert_eq!(
-            map(key(KeyCode::Char('h')), Mode::Normal),
-            Some(Action::Back)
-        );
-        assert_eq!(
-            map(key(KeyCode::Char('l')), Mode::Normal),
-            Some(Action::Enter)
-        );
-    }
-
-    #[test]
-    fn r_reverses_but_only_when_not_typing() {
-        assert_eq!(
-            map(key(KeyCode::Char('r')), Mode::Normal),
-            Some(Action::Reverse)
-        );
+    fn r_does_nothing_while_browsing_and_is_text_while_typing() {
+        assert_eq!(map(key(KeyCode::Char('r')), Mode::Normal), None);
         assert_eq!(
             map(key(KeyCode::Char('r')), Mode::Typing),
             Some(Action::Char('r'))
@@ -708,7 +665,7 @@ mod tests {
     #[test]
     fn ctrl_c_is_an_interrupt_in_every_mode() {
         let k = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-        for mode in [Mode::Typing, Mode::Normal, Mode::Sort] {
+        for mode in [Mode::Typing, Mode::Normal] {
             assert_eq!(map(k, mode), Some(Action::Interrupt));
         }
     }

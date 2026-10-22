@@ -3,17 +3,14 @@
 
 //! A filterable list with a cursor.
 
-use std::cmp::{Ordering, Reverse};
+use std::cmp::Ordering;
 
 use crate::search::{Matcher, Mode};
 use crate::tui::keys::Action;
 
-/// How the rows are ordered: the column being sorted by.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum SortOrder {
-    /// The order the rows were given in.
-    #[default]
-    Default,
+/// A column a list can be sorted by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortColumn {
     /// By name, case-insensitive, within each group.
     Label,
     /// By URL, case-insensitive, within each group.
@@ -22,20 +19,18 @@ pub enum SortOrder {
     Tags,
 }
 
-impl SortOrder {
+impl SortColumn {
     /// Every column, in the order they are shown.
-    pub const ALL: [Self; 4] = [Self::Default, Self::Label, Self::Url, Self::Tags];
+    pub const ALL: [Self; 3] = [Self::Label, Self::Url, Self::Tags];
+}
 
-    /// A short name for the status line.
-    #[must_use]
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Default => "default",
-            Self::Label => "label",
-            Self::Url => "url",
-            Self::Tags => "tags",
-        }
-    }
+/// Which way a sorted column runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Direction {
+    /// A to Z, and `v6.9` before `v6.10`.
+    Asc,
+    /// The reverse of [`Direction::Asc`].
+    Desc,
 }
 
 /// What a row is sorted by. Sorting never moves a row out of its group.
@@ -57,9 +52,11 @@ pub struct List {
     labels: Vec<String>,
     cells: Vec<Vec<String>>,
     keys: Vec<SortKeys>,
-    sort: SortOrder,
-    reversed: bool,
-    columns: Vec<SortOrder>,
+    /// The sorted column and its direction. `None` is the order given.
+    sorted: Option<(SortColumn, Direction)>,
+    /// Which of [`List::columns`] the column cursor is on.
+    column: usize,
+    columns: Vec<SortColumn>,
     filter: String,
     mode: Mode,
     /// The last filter that compiled, which is what the rows show.
@@ -112,34 +109,34 @@ impl List {
         }
     }
 
-    /// Limit the sort columns to these, in this order. By default every
+    /// Limit the sortable columns to these, in this order. By default every
     /// column is available.
     #[must_use]
-    pub fn with_cycle(mut self, columns: Vec<SortOrder>) -> Self {
+    pub fn with_columns(mut self, columns: Vec<SortColumn>) -> Self {
         self.columns = columns;
         self
     }
 
-    /// The sort columns this list offers, in the order they are shown.
+    /// The sortable columns this list offers, in the order they are shown.
     #[must_use]
-    pub fn columns(&self) -> &[SortOrder] {
+    pub fn columns(&self) -> &[SortColumn] {
         if self.columns.is_empty() {
-            &SortOrder::ALL
+            &SortColumn::ALL
         } else {
             &self.columns
         }
     }
 
-    /// The current sort order.
+    /// The column under the column cursor.
     #[must_use]
-    pub fn sort_order(&self) -> SortOrder {
-        self.sort
+    pub fn column(&self) -> SortColumn {
+        self.columns()[self.column.min(self.columns().len() - 1)]
     }
 
-    /// Whether the order is flipped.
+    /// The sorted column and its direction, or `None` for the order given.
     #[must_use]
-    pub fn reversed(&self) -> bool {
-        self.reversed
+    pub fn sort(&self) -> Option<(SortColumn, Direction)> {
+        self.sorted
     }
 
     /// Keep the cursor on the row it was on after the order changed.
@@ -149,21 +146,30 @@ impl List {
             .unwrap_or(0);
     }
 
-    /// Move the sort `delta` columns along, stopping at either end. The
-    /// cursor stays on the same row.
-    pub fn shift_sort(&mut self, delta: isize) {
-        let selected = self.selected();
-        let columns = self.columns();
-        let at = columns.iter().position(|&c| c == self.sort).unwrap_or(0);
-        let to = at.saturating_add_signed(delta).min(columns.len() - 1);
-        self.sort = columns[to];
-        self.follow(selected);
+    /// Move the column cursor `delta` columns along, stopping at either end.
+    /// The sort does not change.
+    pub fn move_column(&mut self, delta: isize) {
+        let last = self.columns().len() - 1;
+        self.column = self.column.min(last).saturating_add_signed(delta).min(last);
     }
 
-    /// Flip the order inside each group and go to the top of the list.
-    pub fn toggle_reverse(&mut self) {
-        self.reversed = !self.reversed;
-        self.cursor = 0;
+    /// Step the sort of the column under the cursor: ascending, descending,
+    /// none. A column that is not the sorted one starts at ascending. The
+    /// cursor stays on its row, except that it goes to the top when the sort
+    /// turns descending, so the end that matters is in view.
+    pub fn cycle_sort(&mut self) {
+        let selected = self.selected();
+        let column = self.column();
+        self.sorted = match self.sorted {
+            Some((c, Direction::Asc)) if c == column => Some((column, Direction::Desc)),
+            Some((c, Direction::Desc)) if c == column => None,
+            _ => Some((column, Direction::Asc)),
+        };
+        if matches!(self.sorted, Some((_, Direction::Desc))) {
+            self.cursor = 0;
+        } else {
+            self.follow(selected);
+        }
     }
 
     /// How many rows there are, before filtering.
@@ -215,25 +221,22 @@ impl List {
         let mut rows: Vec<usize> = (0..self.labels.len())
             .filter(|&i| self.matcher.is_row_match(&self.labels[i], &self.cells[i]))
             .collect();
-        let reversed = self.reversed;
         let keys = &self.keys;
-        let by_key = |a: usize, b: usize, key: fn(&SortKeys) -> &str| {
-            let order = natural_cmp(key(&keys[a]), key(&keys[b]))
-                .then_with(|| natural_cmp(&keys[a].name, &keys[b].name))
-                .then_with(|| a.cmp(&b));
-            keys[a]
-                .group
-                .cmp(&keys[b].group)
-                .then(if reversed { order.reverse() } else { order })
-        };
-        match self.sort {
-            SortOrder::Default if reversed => {
-                rows.sort_by_key(|&i| (keys[i].group, Reverse(i)));
-            }
-            SortOrder::Default => {}
-            SortOrder::Label => rows.sort_by(|&a, &b| by_key(a, b, |k| &k.name)),
-            SortOrder::Url => rows.sort_by(|&a, &b| by_key(a, b, |k| &k.url)),
-            SortOrder::Tags => rows.sort_by(|&a, &b| by_key(a, b, |k| &k.tags)),
+        if let Some((column, direction)) = self.sorted {
+            let key: fn(&SortKeys) -> &str = match column {
+                SortColumn::Label => |k| &k.name,
+                SortColumn::Url => |k| &k.url,
+                SortColumn::Tags => |k| &k.tags,
+            };
+            rows.sort_by(|&a, &b| {
+                let order = natural_cmp(key(&keys[a]), key(&keys[b]))
+                    .then_with(|| natural_cmp(&keys[a].name, &keys[b].name))
+                    .then_with(|| a.cmp(&b));
+                keys[a].group.cmp(&keys[b].group).then(match direction {
+                    Direction::Asc => order,
+                    Direction::Desc => order.reverse(),
+                })
+            });
         }
         rows
     }
@@ -604,52 +607,74 @@ mod tests {
         )
     }
 
-    #[test]
-    fn label_order_sorts_each_group_case_insensitively() {
-        let mut l = keyed();
-        l.shift_sort(1);
-        assert_eq!(l.sort_order(), SortOrder::Label);
-        assert_eq!(l.visible(), [0, 2, 3, 1]);
-    }
+    use Direction::{Asc, Desc};
+    use SortColumn::{Label, Tags, Url};
 
     #[test]
-    fn url_order_sorts_each_group_by_url() {
-        let mut l = keyed();
-        l.shift_sort(1);
-        l.shift_sort(1);
-        assert_eq!(l.sort_order(), SortOrder::Url);
-        assert_eq!(l.visible(), [0, 1, 3, 2]);
-    }
-
-    #[test]
-    fn moving_back_to_the_first_column_restores_the_original_order() {
-        let mut l = keyed();
-        l.shift_sort(1);
-        l.shift_sort(1);
-        l.shift_sort(-1);
-        l.shift_sort(-1);
-        assert_eq!(l.sort_order(), SortOrder::Default);
+    fn a_new_list_is_unsorted_with_the_cursor_on_the_first_column() {
+        let l = keyed();
+        assert_eq!(l.sort(), None);
+        assert_eq!(l.column(), Label);
+        assert_eq!(l.columns(), [Label, Url, Tags]);
         assert_eq!(l.visible(), [0, 1, 2, 3]);
     }
 
     #[test]
-    fn shifting_stops_at_the_first_and_last_column() {
+    fn s_cycles_ascending_descending_none() {
         let mut l = keyed();
-        l.shift_sort(-1);
-        assert_eq!(l.sort_order(), SortOrder::Default);
-        l.shift_sort(10);
-        assert_eq!(l.sort_order(), SortOrder::Tags);
-        l.shift_sort(1);
-        assert_eq!(l.sort_order(), SortOrder::Tags);
-        assert_eq!(
-            l.columns(),
-            [
-                SortOrder::Default,
-                SortOrder::Label,
-                SortOrder::Url,
-                SortOrder::Tags
-            ]
-        );
+        l.cycle_sort();
+        assert_eq!(l.sort(), Some((Label, Asc)));
+        assert_eq!(l.visible(), [0, 2, 3, 1]);
+        l.cycle_sort();
+        assert_eq!(l.sort(), Some((Label, Desc)));
+        assert_eq!(l.visible(), [0, 1, 3, 2]);
+        l.cycle_sort();
+        assert_eq!(l.sort(), None);
+        assert_eq!(l.visible(), [0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn moving_the_column_does_not_change_the_sort() {
+        let mut l = keyed();
+        l.cycle_sort();
+        l.move_column(1);
+        assert_eq!(l.column(), Url);
+        assert_eq!(l.sort(), Some((Label, Asc)));
+        assert_eq!(l.visible(), [0, 2, 3, 1]);
+    }
+
+    #[test]
+    fn s_on_a_new_column_starts_ascending_and_replaces_the_old_sort() {
+        let mut l = keyed();
+        l.cycle_sort();
+        l.cycle_sort();
+        assert_eq!(l.sort(), Some((Label, Desc)));
+        l.move_column(1);
+        l.cycle_sort();
+        assert_eq!(l.sort(), Some((Url, Asc)));
+        assert_eq!(l.visible(), [0, 1, 3, 2]);
+    }
+
+    #[test]
+    fn s_back_on_the_first_column_starts_ascending_again() {
+        let mut l = keyed();
+        l.cycle_sort();
+        l.move_column(1);
+        l.cycle_sort();
+        l.move_column(-1);
+        l.cycle_sort();
+        assert_eq!(l.sort(), Some((Label, Asc)));
+    }
+
+    #[test]
+    fn the_column_cursor_stops_at_both_ends() {
+        let mut l = keyed();
+        l.move_column(-1);
+        assert_eq!(l.column(), Label);
+        l.move_column(10);
+        assert_eq!(l.column(), Tags);
+        l.move_column(1);
+        assert_eq!(l.column(), Tags);
     }
 
     #[test]
@@ -664,34 +689,71 @@ mod tests {
             vec!["a".into(), "b".into(), "c".into()],
             vec![key("merge"), key("maintainers"), key("manual")],
         );
-        l.shift_sort(3);
-        assert_eq!(l.sort_order(), SortOrder::Tags);
+        l.move_column(2);
+        l.cycle_sort();
+        assert_eq!(l.sort(), Some((Tags, Asc)));
         assert_eq!(l.visible(), [1, 2, 0]);
     }
 
     #[test]
-    fn the_cursor_stays_on_the_same_row_after_a_sort() {
+    fn the_cursor_follows_its_row_when_the_sort_changes_to_ascending_or_none() {
         let mut l = keyed();
         l.down();
         assert_eq!(l.selected(), Some(1));
-        l.shift_sort(1);
+        l.cycle_sort();
         assert_eq!(l.selected(), Some(1));
         assert_eq!(l.cursor(), 3);
+    }
+
+    #[test]
+    fn the_cursor_goes_to_the_top_when_the_sort_turns_descending() {
+        let mut l = keyed();
+        l.cycle_sort();
+        l.bottom();
+        l.cycle_sort();
+        assert_eq!(l.sort(), Some((Label, Desc)));
+        assert_eq!(l.cursor(), 0);
     }
 
     #[test]
     fn sort_and_filter_compose() {
         let mut l = keyed();
         l.push('a');
-        l.shift_sort(1);
+        l.cycle_sort();
         assert_eq!(l.visible(), [2, 1]);
     }
 
     #[test]
     fn a_plain_list_sorts_by_its_text() {
         let mut l = List::new(vec!["b".into(), "a".into()]);
-        l.shift_sort(1);
+        l.cycle_sort();
         assert_eq!(l.visible(), [1, 0]);
+    }
+
+    #[test]
+    fn descending_flips_rows_inside_each_group_only() {
+        let mut l = keyed();
+        l.cycle_sort();
+        l.cycle_sort();
+        assert_eq!(l.visible(), [0, 1, 3, 2]);
+    }
+
+    #[test]
+    fn a_list_can_offer_fewer_columns() {
+        let mut l = List::new(vec![
+            "refs/tags/v6.10".into(),
+            "refs/tags/v6.9".into(),
+            "refs/heads/main".into(),
+            "HEAD".into(),
+        ])
+        .with_columns(vec![Label]);
+        assert_eq!(l.columns(), [Label]);
+        l.move_column(1);
+        assert_eq!(l.column(), Label);
+        l.cycle_sort();
+        assert_eq!(l.visible(), [3, 2, 1, 0]);
+        l.cycle_sort();
+        assert_eq!(l.visible(), [0, 1, 2, 3]);
     }
 
     fn numbered(n: usize) -> List {
@@ -757,68 +819,6 @@ mod tests {
         assert_eq!(natural_cmp("rc2", "rc10"), Less);
         assert_eq!(natural_cmp("a", "ab"), Less);
         assert_eq!(natural_cmp("abc", "abd"), Less);
-    }
-
-    #[test]
-    fn reversing_flips_rows_inside_each_group_only() {
-        let mut l = keyed();
-        l.shift_sort(1);
-        assert_eq!(l.visible(), [0, 2, 3, 1]);
-        l.toggle_reverse();
-        assert!(l.reversed());
-        assert_eq!(l.visible(), [0, 1, 3, 2]);
-        l.toggle_reverse();
-        assert_eq!(l.visible(), [0, 2, 3, 1]);
-    }
-
-    #[test]
-    fn the_default_order_can_be_reversed_too() {
-        let mut l = keyed();
-        l.toggle_reverse();
-        assert_eq!(l.sort_order(), SortOrder::Default);
-        assert_eq!(l.visible(), [0, 3, 2, 1]);
-    }
-
-    #[test]
-    fn reversing_puts_the_cursor_at_the_top() {
-        let mut l = keyed();
-        l.down();
-        l.down();
-        assert_eq!(l.cursor(), 2);
-        l.toggle_reverse();
-        assert_eq!(l.cursor(), 0);
-        l.bottom();
-        l.toggle_reverse();
-        assert_eq!(l.cursor(), 0);
-    }
-
-    #[test]
-    fn a_custom_set_of_columns_limits_where_shifting_goes() {
-        let mut l = List::new(vec![
-            "refs/tags/v6.10".into(),
-            "refs/tags/v6.9".into(),
-            "refs/heads/main".into(),
-            "HEAD".into(),
-        ])
-        .with_cycle(vec![SortOrder::Default, SortOrder::Label]);
-        assert_eq!(l.visible(), [0, 1, 2, 3]);
-        l.shift_sort(1);
-        assert_eq!(l.sort_order(), SortOrder::Label);
-        assert_eq!(l.visible(), [3, 2, 1, 0]);
-        l.toggle_reverse();
-        assert_eq!(l.visible(), [0, 1, 2, 3]);
-        l.shift_sort(1);
-        assert_eq!(l.sort_order(), SortOrder::Label);
-        l.shift_sort(-1);
-        assert_eq!(l.sort_order(), SortOrder::Default);
-        assert_eq!(l.visible(), [3, 2, 1, 0]);
-    }
-
-    #[test]
-    fn sort_orders_have_names() {
-        assert_eq!(SortOrder::Default.name(), "default");
-        assert_eq!(SortOrder::Label.name(), "label");
-        assert_eq!(SortOrder::Url.name(), "url");
     }
 
     #[test]

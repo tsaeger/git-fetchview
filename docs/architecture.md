@@ -102,8 +102,9 @@ flowchart LR
   as `5` or `g`. Change keys there.
 - `App` is the two-level picker, remotes then refs. `Select` is the
   multi-select that `add` uses. Both share `List`.
-- `List` owns the rows, the filter, the sort column and the cursor. Sorting
-  never moves a row out of its group, and names compare naturally.
+- `List` owns the rows, the filter, the column cursor, the sorted column and
+  its direction, and the row cursor. Sorting never moves a row out of its
+  group, and names compare naturally.
 - Choosing a remote does not block. `App::step` returns `Flow::Load`, and the
   event loop in `tui/mod.rs` hands it to a worker thread that runs
   `ls-remote` and applies the hide rules, so the state machine stays free of
@@ -113,7 +114,7 @@ flowchart LR
   kills the git process when it sees it.
 
 The mode decides how keys are read: normal, typing in the search box,
-choosing a sort column, answering a yes/no question, picking from a menu,
+answering a yes/no question, picking from a menu,
 or typing into a one-line prompt.
 
 ```mermaid
@@ -121,8 +122,6 @@ stateDiagram-v2
     [*] --> Normal
     Normal --> Typing: / or i
     Typing --> Normal: Esc or Enter
-    Normal --> Sort: s
-    Sort --> Normal: s, Esc or Enter
     Normal --> Menu: A
     Menu --> Prompt: m or f
     Menu --> Normal: t scans at once, other keys close
