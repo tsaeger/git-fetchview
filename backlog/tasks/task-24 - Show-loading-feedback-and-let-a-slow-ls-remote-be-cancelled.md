@@ -1,9 +1,10 @@
 ---
 id: TASK-24
 title: Show loading feedback and let a slow ls-remote be cancelled
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T03:16:00Z'
+updated_date: '2026-10-22T03:35:00Z'
 labels: []
 dependencies: []
 ordinal: 6000
@@ -17,9 +18,9 @@ While git ls-remote runs, the picker does not redraw and ignores keys. A remote 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The status line shows loading while ls-remote or the hidden-ref fetch runs
-- [ ] #2 Esc or Ctrl-C during a load cancels it, kills the git process, and returns to the remote list
-- [ ] #3 A load that fails still shows its error as today
-- [ ] #4 Tests cover loading, cancel and failure in the state machine, with a fake slow loader
-- [ ] #5 AGENTS.md keybind notes and docs/usage.md mention the cancel
+- [x] #1 The status line shows loading while ls-remote or the hidden-ref fetch runs
+- [x] #2 Esc or Ctrl-C during a load cancels it, kills the git process, and returns to the remote list
+- [x] #3 A load that fails still shows its error as today
+- [x] #4 Tests cover loading, cancel and failure in the state machine, with a fake slow loader
+- [x] #5 AGENTS.md keybind notes and docs/usage.md mention the cancel
 <!-- AC:END -->
