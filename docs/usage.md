@@ -32,7 +32,7 @@ While a remote's refs are loading, the status line shows a spinner and the
 remote's name. `Esc` or `Ctrl-C` give up, kill the `git ls-remote`, and
 return to the remote list. A slow or stalled remote never freezes the screen.
 
-Keys typed but not finished (`5`, `g`) show at the left of the status line, and `Esc` drops them. The search box is always on the top line and shows how many rows match. While you edit it, characters are text (so `q` types a `q`) and the list filters as you type. `Esc` or `Enter` leaves the box and the filter stays; `c` clears it and the sort too (the column cursor stays). There is no sort mode. `h` and `l` (or the arrows) move a column cursor, shown as an underlined header (`name`, `url`, `tags`; refs sort by name only). `s` sorts the column under it: the first press is ascending (`↑` in the header), the second descending (`↓`), the third turns the sort off and restores the order git gave. Moving the cursor never changes the sort, which stays on its column until you press `s` on another one. Names sort naturally, so `v6.9` comes before `v6.10`, and descending puts the newest tags first. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. The cursor stays on its row when a sort changes, except that it goes to the top when the sort turns descending.
+Keys typed but not finished (`5`, `g`) show at the left of the status line, and `Esc` drops them. The search box is always on the top line and shows how many rows match. While you edit it, characters are text (so `q` types a `q`) and the list filters as you type. `Esc` or `Enter` leaves the box and the filter stays; `c` clears it and the sort too (the column cursor stays). There is no sort mode. `h` and `l` (or the arrows) move a column cursor, shown as an underlined header (`name`, `url`, `source`; refs sort by name only). `s` sorts the column under it: the first press is ascending (`↑` in the header), the second descending (`↓`), the third turns the sort off and restores the order git gave. Moving the cursor never changes the sort, which stays on its column until you press `s` on another one. Names sort naturally, so `v6.9` comes before `v6.10`, and descending puts the newest tags first. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. The cursor stays on its row when a sort changes, except that it goes to the top when the sort turns descending.
 
 ## Going straight to a ref
 
@@ -102,8 +102,10 @@ relative path is relative to the config file that names it.
 
 Each line of a remotes file is `url<TAB>label<TAB>tags`. Lines starting with `#`
 are comments and are kept when the file is rewritten. The label defaults to the
-last two path segments (`netdev/net`), and the tags record where the entry came
-from, so `/maintainers` in the picker shows only those.
+last two path segments (`netdev/net`), and the third field records where the
+entry came from (`maintainers`, a merge range, a file). The picker shows it as
+the `source` column, so `/maintainers` shows only those. The field is still
+called `tags` in the file, so existing files keep working.
 
 Two URLs name the same repo when the host and path match, so the `https`,
 `ssh://` and `git@host:path` forms of one repo count once, and a collected

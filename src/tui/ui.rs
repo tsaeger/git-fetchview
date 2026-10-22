@@ -33,14 +33,14 @@ type Header = (&'static str, Option<SortColumn>);
 const REMOTE_HEADERS: [Header; 3] = [
     ("name", Some(SortColumn::Label)),
     ("url", Some(SortColumn::Url)),
-    ("tags", Some(SortColumn::Tags)),
+    ("source", Some(SortColumn::Source)),
 ];
 const REF_HEADERS: [Header; 2] = [("name", Some(SortColumn::Label)), ("oid", None)];
 const SELECT_HEADERS: [Header; 4] = [
     ("", None),
     ("name", Some(SortColumn::Label)),
     ("url", Some(SortColumn::Url)),
-    ("tags", Some(SortColumn::Tags)),
+    ("source", Some(SortColumn::Source)),
 ];
 
 /// Columns before the last one stop growing here; the last takes what is left.
@@ -427,13 +427,13 @@ mod tests {
             line.find("https://").unwrap()
         };
         assert_eq!(url_col("origin"), url_col("netdev/net-next"));
-        // The tags column lines up too, and the header names the columns.
-        let tags_at = lines
+        // The source column lines up too, and the header names the columns.
+        let source_at = lines
             .iter()
             .find(|l| l.contains("merge"))
             .unwrap()
             .find("merge");
-        assert_eq!(tags_at, lines[2].find("tags"));
+        assert_eq!(source_at, lines[2].find("source"));
         assert!(lines[2].contains("name") && lines[2].contains("url"));
     }
 
@@ -588,7 +588,7 @@ mod tests {
             terminal.draw(|f| draw(f, app, &theme, "")).unwrap();
             let buffer = terminal.backend().buffer().clone();
             let line: String = (0..60).map(|x| buffer[(x, 2)].symbol()).collect();
-            ["name", "url", "tags"]
+            ["name", "url", "source"]
                 .iter()
                 .map(|title| {
                     let x = u16::try_from(line.find(title).unwrap()).unwrap();
@@ -725,7 +725,7 @@ mod tests {
             cells: vec!["x".into()],
             name: "x".into(),
             url: "u".into(),
-            tags: String::new(),
+            source: String::new(),
             have: false,
         }]);
         s.update(Action::Search);
@@ -741,7 +741,7 @@ mod tests {
             cells: vec![n.into()],
             name: n.into(),
             url: "u".into(),
-            tags: String::new(),
+            source: String::new(),
             have: false,
         };
         let mut s = Select::new(vec![row("a"), row("b"), row("c")]);

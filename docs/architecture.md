@@ -160,8 +160,10 @@ flowchart LR
   `entry::validate_url` before it is stored or handed to git. Only `https`,
   `http`, `git`, `ssh` and scp-style URLs pass, and transport helpers such as
   `ext::` are rejected.
-- The remotes file holds `url<TAB>label<TAB>tags` lines. Comments are kept
-  when the file is rewritten, and writes are atomic.
+- The remotes file holds `url<TAB>label<TAB>tags` lines. The third field
+  says where the entry came from; the picker headed it `source`, but the file
+  keeps the name `tags` so old files still load. Comments are kept when the
+  file is rewritten, and writes are atomic.
 - `registry` finds the files named by `fetchview.remotes` at every config
   level and loads them.
 

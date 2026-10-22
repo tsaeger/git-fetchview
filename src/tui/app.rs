@@ -196,7 +196,7 @@ fn remote_keys(r: &Remote) -> SortKeys {
     SortKeys {
         name: r.name.clone(),
         url: r.url.clone(),
-        tags: r.tags.join(","),
+        source: r.tags.join(","),
         // Real remotes stay above collected ones.
         group: u8::from(!r.tags.is_empty()),
     }
@@ -909,7 +909,7 @@ impl App {
             .map(|r| SortKeys {
                 name: r.name.clone(),
                 url: r.name.clone(),
-                tags: String::new(),
+                source: String::new(),
                 group: 0,
             })
             .collect();

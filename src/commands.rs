@@ -89,7 +89,7 @@ fn row(entry: &Entry, have: bool) -> Row {
         cells: row_cells(entry),
         name: entry.display_label(),
         url: entry.url.clone(),
-        tags: entry.tags.iter().cloned().collect::<Vec<_>>().join(","),
+        source: entry.tags.iter().cloned().collect::<Vec<_>>().join(","),
         have,
     }
 }

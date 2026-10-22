@@ -15,13 +15,13 @@ pub enum SortColumn {
     Label,
     /// By URL, case-insensitive, within each group.
     Url,
-    /// By tags, case-insensitive, within each group.
-    Tags,
+    /// By source, case-insensitive, within each group.
+    Source,
 }
 
 impl SortColumn {
     /// Every column, in the order they are shown.
-    pub const ALL: [Self; 3] = [Self::Label, Self::Url, Self::Tags];
+    pub const ALL: [Self; 3] = [Self::Label, Self::Url, Self::Source];
 }
 
 /// Which way a sorted column runs.
@@ -40,8 +40,8 @@ pub struct SortKeys {
     pub name: String,
     /// URL to sort by in URL order.
     pub url: String,
-    /// Tags to sort by in tags order.
-    pub tags: String,
+    /// Source to sort by in source order.
+    pub source: String,
     /// Rows sort within their group; lower groups come first.
     pub group: u8,
 }
@@ -75,7 +75,7 @@ impl List {
             .map(|label| SortKeys {
                 name: label.clone(),
                 url: label.clone(),
-                tags: String::new(),
+                source: String::new(),
                 group: 0,
             })
             .collect();
@@ -226,7 +226,7 @@ impl List {
             let key: fn(&SortKeys) -> &str = match column {
                 SortColumn::Label => |k| &k.name,
                 SortColumn::Url => |k| &k.url,
-                SortColumn::Tags => |k| &k.tags,
+                SortColumn::Source => |k| &k.source,
             };
             rows.sort_by(|&a, &b| {
                 let order = natural_cmp(key(&keys[a]), key(&keys[b]))
@@ -453,7 +453,7 @@ mod tests {
         }
     }
 
-    fn tags() -> List {
+    fn source() -> List {
         List::new(
             ["v6.1", "v6.1-rc1", "v6.2", "v6.2-rc1", "net-next"]
                 .map(String::from)
@@ -463,7 +463,7 @@ mod tests {
 
     #[test]
     fn the_filter_understands_and_not_and_or() {
-        let mut l = tags();
+        let mut l = source();
         typed(&mut l, "v6 !rc");
         assert_eq!(l.visible_labels(), ["v6.1", "v6.2"]);
         l.clear();
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn regex_mode_filters_by_pattern_and_toggling_keeps_the_text() {
-        let mut l = tags();
+        let mut l = source();
         typed(&mut l, "^v6\\.[12]$");
         // In simple mode that is a literal string, which matches nothing.
         assert_eq!(l.visible().len(), 0);
@@ -488,7 +488,7 @@ mod tests {
 
     #[test]
     fn a_bad_regex_keeps_the_last_list_and_says_why() {
-        let mut l = tags();
+        let mut l = source();
         l.toggle_mode();
         typed(&mut l, "rc1");
         assert_eq!(l.visible().len(), 2);
@@ -555,7 +555,7 @@ mod tests {
         List::new(vec![
             "refs/heads/main".into(),
             "refs/heads/Dev".into(),
-            "refs/tags/v1".into(),
+            "refs/source/v1".into(),
         ])
     }
 
@@ -569,7 +569,7 @@ mod tests {
     #[test]
     fn selection_maps_back_to_original_index() {
         let mut l = list();
-        "tags".chars().for_each(|c| l.push(c));
+        "source".chars().for_each(|c| l.push(c));
         assert_eq!(l.selected(), Some(2));
     }
 
@@ -589,7 +589,7 @@ mod tests {
         let key = |name: &str, url: &str, group: u8| SortKeys {
             name: name.into(),
             url: url.into(),
-            tags: String::new(),
+            source: String::new(),
             group,
         };
         List::with_keys(
@@ -609,14 +609,14 @@ mod tests {
     }
 
     use Direction::{Asc, Desc};
-    use SortColumn::{Label, Tags, Url};
+    use SortColumn::{Label, Source, Url};
 
     #[test]
     fn a_new_list_is_unsorted_with_the_cursor_on_the_first_column() {
         let l = keyed();
         assert_eq!(l.sort(), None);
         assert_eq!(l.column(), Label);
-        assert_eq!(l.columns(), [Label, Url, Tags]);
+        assert_eq!(l.columns(), [Label, Url, Source]);
         assert_eq!(l.visible(), [0, 1, 2, 3]);
     }
 
@@ -673,17 +673,17 @@ mod tests {
         l.move_column(-1);
         assert_eq!(l.column(), Label);
         l.move_column(10);
-        assert_eq!(l.column(), Tags);
+        assert_eq!(l.column(), Source);
         l.move_column(1);
-        assert_eq!(l.column(), Tags);
+        assert_eq!(l.column(), Source);
     }
 
     #[test]
     fn tags_order_sorts_by_the_tag_text() {
-        let key = |tags: &str| SortKeys {
+        let key = |source: &str| SortKeys {
             name: "n".into(),
             url: "u".into(),
-            tags: tags.into(),
+            source: source.into(),
             group: 0,
         };
         let mut l = List::with_keys(
@@ -692,7 +692,7 @@ mod tests {
         );
         l.move_column(2);
         l.cycle_sort();
-        assert_eq!(l.sort(), Some((Tags, Asc)));
+        assert_eq!(l.sort(), Some((Source, Asc)));
         assert_eq!(l.visible(), [1, 2, 0]);
     }
 
@@ -742,8 +742,8 @@ mod tests {
     #[test]
     fn a_list_can_offer_fewer_columns() {
         let mut l = List::new(vec![
-            "refs/tags/v6.10".into(),
-            "refs/tags/v6.9".into(),
+            "refs/source/v6.10".into(),
+            "refs/source/v6.9".into(),
             "refs/heads/main".into(),
             "HEAD".into(),
         ])

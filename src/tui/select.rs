@@ -18,8 +18,8 @@ pub struct Row {
     pub name: String,
     /// URL to sort by in URL order.
     pub url: String,
-    /// Tags to sort by in tags order.
-    pub tags: String,
+    /// Source to sort by in source order.
+    pub source: String,
     /// Already present: shown, but cannot be checked.
     pub have: bool,
 }
@@ -57,7 +57,7 @@ impl Select {
             .map(|r| SortKeys {
                 name: r.name.clone(),
                 url: r.url.clone(),
-                tags: r.tags.clone(),
+                source: r.source.clone(),
                 // Rows already present stay below the new ones.
                 group: u8::from(r.have),
             })
@@ -280,21 +280,21 @@ mod tests {
         vec![
             Row {
                 cells: vec!["net".into(), "https://h/net".into(), String::new()],
-                tags: String::new(),
+                source: String::new(),
                 name: "net".into(),
                 url: "https://h/net".into(),
                 have: false,
             },
             Row {
                 cells: vec!["mm".into(), "https://h/mm".into(), String::new()],
-                tags: String::new(),
+                source: String::new(),
                 name: "mm".into(),
                 url: "https://h/mm".into(),
                 have: true,
             },
             Row {
                 cells: vec!["usb".into(), "https://h/usb".into(), String::new()],
-                tags: String::new(),
+                source: String::new(),
                 name: "usb".into(),
                 url: "https://h/usb".into(),
                 have: false,
@@ -316,7 +316,7 @@ mod tests {
         (0..5)
             .map(|i| Row {
                 cells: vec![format!("r{i}")],
-                tags: String::new(),
+                source: String::new(),
                 name: format!("r{i}"),
                 url: String::new(),
                 have: false,
