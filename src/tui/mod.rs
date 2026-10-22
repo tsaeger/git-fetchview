@@ -162,6 +162,10 @@ fn run(
             Flow::Continue => {}
             Flow::Load(load) => worker.start(load),
             Flow::CancelLoad => worker.cancel(),
+            Flow::Promote { name, url } => {
+                let result = git::Cmd::remote_add(&name, &url).output().map(|_| ());
+                app.finish_promote(&url, &name, result);
+            }
             Flow::Add(url) => {
                 let entry = Entry::new(url, "manual");
                 let result = registry::add_to_default(&entry).map(|()| entry);

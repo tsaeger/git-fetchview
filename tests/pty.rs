@@ -105,6 +105,18 @@ impl World {
         assert!(out.status.success(), "{out:?}");
     }
 
+    fn git_output(&self, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(self.work.path())
+            .env("HOME", self.home.path())
+            .env("GIT_CONFIG_GLOBAL", self.home.path().join("gitconfig"))
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
     fn collected_file(&self) -> String {
         std::fs::read_to_string(self.work.path().join(".git/fetchview.remotes")).unwrap_or_default()
     }
@@ -415,6 +427,50 @@ fn esc_closes_the_prompt_without_adding() {
     s.send("\x1b");
     s.wait_until("the prompt gone", |t| !t.contains("add url:"));
     assert_eq!(world.collected_file(), "");
+    s.send("q");
+    assert!(s.wait_exit().success());
+}
+
+#[test]
+fn p_makes_a_collected_remote_a_real_one() {
+    let world = World::new();
+    world.collect("https://example.org/team/proj.git");
+    let mut s = session!(world);
+    s.wait_for("team/proj");
+    s.send("j");
+    s.send("p");
+    s.wait_for("remote name: team-proj");
+
+    // Git refuses a bad name and the prompt stays, so it can be fixed.
+    for _ in 0.."team-proj".len() {
+        s.send("\x7f");
+    }
+    s.send("a..b");
+    s.send("\r");
+    s.wait_for("not a valid remote name");
+    s.wait_for("remote name: a..b");
+    assert!(!world.git_output(&["remote"]).contains("a..b"));
+
+    for _ in 0.."a..b".len() {
+        s.send("\x7f");
+    }
+    s.send("team");
+    s.send("\r");
+    s.wait_for("added remote team");
+    s.wait_until("the cursor on the real remote", |t| {
+        t.lines()
+            .any(|l| l.contains("> team") && !l.contains("manual"))
+    });
+    assert_eq!(
+        world.git_output(&["remote"]).lines().collect::<Vec<_>>(),
+        ["origin", "team"]
+    );
+    assert_eq!(
+        world.git_output(&["remote", "get-url", "team"]).trim(),
+        "https://example.org/team/proj.git"
+    );
+    // The collected entry stays in its file.
+    assert!(world.collected_file().contains("team/proj"));
     s.send("q");
     assert!(s.wait_exit().success());
 }

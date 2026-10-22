@@ -59,6 +59,8 @@ pub enum Action {
     Delete,
     /// Open a prompt for a new remote's URL.
     New,
+    /// Make the collected remote under the cursor a real git remote.
+    Promote,
     /// Say yes to the question being asked.
     Confirm,
     /// Clear the search / filter.
@@ -257,6 +259,7 @@ fn map_normal(code: KeyCode) -> Option<Action> {
         KeyCode::Char('c') => Some(Action::Clear),
         KeyCode::Char('d') => Some(Action::Delete),
         KeyCode::Char('n') => Some(Action::New),
+        KeyCode::Char('p') => Some(Action::Promote),
         KeyCode::Char('q') => Some(Action::Quit),
         _ => None,
     })
@@ -318,6 +321,18 @@ mod tests {
         assert_eq!(
             p.feed(key(KeyCode::Char('5')), Mode::Confirm),
             cmd(Action::Back, None)
+        );
+    }
+
+    #[test]
+    fn p_promotes_in_the_normal_keymap_only() {
+        assert_eq!(
+            map(key(KeyCode::Char('p')), Mode::Normal),
+            Some(Action::Promote)
+        );
+        assert_eq!(
+            map(key(KeyCode::Char('p')), Mode::Prompt),
+            Some(Action::Char('p'))
         );
     }
 

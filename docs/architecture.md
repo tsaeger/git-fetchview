@@ -122,7 +122,7 @@ stateDiagram-v2
     Typing --> Normal: Esc or Enter
     Normal --> Sort: s
     Sort --> Normal: s, Esc or Enter
-    Normal --> Prompt: n
+    Normal --> Prompt: n, or p on a collected remote
     Prompt --> Normal: Enter adds, Esc cancels
     Normal --> Confirm: d on a collected remote
     Confirm --> Normal: y removes, any other key cancels

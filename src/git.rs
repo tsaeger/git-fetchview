@@ -63,6 +63,12 @@ impl Cmd {
         }
     }
 
+    /// `git remote add <name> <url>`
+    #[must_use]
+    pub fn remote_add(name: &str, url: &str) -> Self {
+        Self::new("git", ["remote", "add", name, url])
+    }
+
     /// `git remote -v`
     #[must_use]
     pub fn list_remotes() -> Self {
@@ -478,6 +484,14 @@ mod tests {
         assert_eq!(shell_quote("a b"), "'a b'");
         assert_eq!(shell_quote("it's"), r"'it'\''s'");
         assert_eq!(shell_quote(""), "''");
+    }
+
+    #[test]
+    fn remote_add_prints_as_the_command_to_paste() {
+        assert_eq!(
+            Cmd::remote_add("netdev-net", "https://h/net.git").to_string(),
+            "git remote add netdev-net https://h/net.git"
+        );
     }
 
     #[test]

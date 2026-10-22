@@ -36,6 +36,13 @@ pub enum Flow {
     /// Add this URL to the default remotes file, then call
     /// [`App::finish_add`].
     Add(String),
+    /// Run `git remote add <name> <url>`, then call [`App::finish_promote`].
+    Promote {
+        /// The name for the new remote.
+        name: String,
+        /// The collected remote's URL.
+        url: String,
+    },
     /// A remote and ref were chosen.
     Done(Selection),
 }
@@ -89,14 +96,44 @@ pub type Loader<'a> = dyn FnMut(&Remote) -> Result<Loaded> + 'a;
 enum PromptKind {
     /// A URL to collect.
     AddUrl,
+    /// A name for the collected remote at this index, as a real remote.
+    PromoteName(usize),
 }
 
 impl PromptKind {
     fn label(self) -> &'static str {
         match self {
             Self::AddUrl => "add url",
+            Self::PromoteName(_) => "remote name",
         }
     }
+}
+
+/// One line for the status bar: what git said, not the whole command line.
+fn short_reason(e: &Error) -> String {
+    if let Error::Failed { stderr, .. } = e
+        && let Some(line) = stderr.lines().rev().find(|l| !l.trim().is_empty())
+    {
+        return line.trim().trim_start_matches("fatal: ").to_owned();
+    }
+    e.to_string()
+}
+
+/// A remote name to suggest for a label: `netdev/net-next` is
+/// `netdev-net-next`, and anything odd becomes a dash.
+fn suggested_name(label: &str) -> String {
+    label
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches(|c| c == '-' || c == '.')
+        .to_owned()
 }
 
 #[derive(Debug)]
@@ -352,6 +389,7 @@ impl App {
             Action::Back => self.back(),
             Action::Delete => self.ask_remove(),
             Action::New => self.open_prompt(PromptKind::AddUrl),
+            Action::Promote => self.ask_promote(),
             Action::Enter => return self.enter(),
             Action::Quit
             | Action::Interrupt
@@ -384,6 +422,55 @@ impl App {
         }
     }
 
+    /// `p`: ask for a name to make a collected remote a real one.
+    fn ask_promote(&mut self) {
+        if self.level != Level::Remotes {
+            return;
+        }
+        let Some(index) = self.list().selected() else {
+            return;
+        };
+        let remote = &self.remotes[index];
+        if remote.tags.is_empty() {
+            self.notice = Some(format!("{} is already a real remote", remote.name));
+        } else {
+            self.prompt = Some(Prompt {
+                kind: PromptKind::PromoteName(index),
+                text: suggested_name(&remote.name),
+            });
+        }
+    }
+
+    /// Take the result of a [`Flow::Promote`]. On success the collected row
+    /// becomes a real remote, in the real group. On failure the prompt stays,
+    /// so the name can be fixed.
+    pub fn finish_promote(&mut self, url: &str, name: &str, result: Result<()>) {
+        if let Err(e) = result {
+            self.error = Some(short_reason(&e));
+            return;
+        }
+        self.prompt = None;
+        if let Some(index) = self.remotes.iter().position(|r| r.url == url) {
+            self.remotes.remove(index);
+            self.remote_list.remove(index);
+        }
+        let remote = Remote {
+            name: name.to_owned(),
+            url: url.to_owned(),
+            tags: Vec::new(),
+        };
+        let at = self
+            .remotes
+            .iter()
+            .take_while(|r| r.tags.is_empty())
+            .count();
+        self.remote_list
+            .insert(at, remote_cells(&remote), remote_keys(&remote));
+        self.remotes.insert(at, remote);
+        self.remote_list.focus(at);
+        self.notice = Some(format!("added remote {name}"));
+    }
+
     fn step_prompt(&mut self, action: Action) -> Flow {
         let Some(prompt) = self.prompt.as_mut() else {
             return Flow::Continue;
@@ -408,6 +495,9 @@ impl App {
             return Flow::Continue;
         };
         let text = prompt.text.trim().to_owned();
+        if let PromptKind::PromoteName(index) = prompt.kind {
+            return self.submit_name(index, &text);
+        }
         match validate_url(&text) {
             Err(why) => {
                 self.error = Some(format!("not a usable URL: {why}"));
@@ -424,6 +514,30 @@ impl App {
                     Flow::Add(url)
                 }
             }
+        }
+    }
+
+    /// Enter in the name prompt. Git checks the name for real; this only
+    /// refuses what would be misread as an option or clash with a remote.
+    fn submit_name(&mut self, index: usize, name: &str) -> Flow {
+        let problem = if name.is_empty() {
+            Some("enter a name")
+        } else if name.starts_with('-') {
+            Some("a name cannot start with '-'")
+        } else if name.chars().any(char::is_whitespace) {
+            Some("a name cannot contain spaces")
+        } else if self.remotes.iter().any(|r| r.name == name) {
+            Some("a remote with that name exists")
+        } else {
+            None
+        };
+        if let Some(problem) = problem {
+            self.error = Some(problem.to_owned());
+            return Flow::Continue;
+        }
+        Flow::Promote {
+            name: name.to_owned(),
+            url: self.remotes[index].url.clone(),
         }
     }
 
@@ -1221,5 +1335,115 @@ mod tests {
         a.update(Action::Enter, &mut load);
         a.step(Command::from(Action::New));
         assert_eq!(a.prompt(), None);
+    }
+
+    fn promoting(a: &mut App) {
+        on_row(a, 1);
+        a.step(Command::from(Action::Promote));
+    }
+
+    #[test]
+    fn p_on_a_collected_row_opens_a_name_prompt_filled_from_the_label() {
+        let mut a = collected_app();
+        promoting(&mut a);
+        assert_eq!(a.prompt(), Some(("remote name", "netdev-net")));
+        assert_eq!(a.mode(), Mode::Prompt);
+    }
+
+    #[test]
+    fn p_on_a_real_remote_or_in_the_refs_list_does_nothing_but_note() {
+        let mut a = collected_app();
+        a.step(Command::from(Action::Promote));
+        assert_eq!(a.prompt(), None);
+        assert!(
+            a.notice()
+                .is_some_and(|n| n.contains("already a real remote"))
+        );
+
+        let mut b = collected_app();
+        let mut load = |_: &Remote| Ok(refs_of(&["refs/heads/main"]));
+        b.update(Action::Enter, &mut load);
+        b.step(Command::from(Action::Promote));
+        assert_eq!(b.prompt(), None);
+    }
+
+    #[test]
+    fn enter_asks_the_loop_to_run_git_remote_add_and_keeps_the_prompt_open() {
+        let mut a = collected_app();
+        promoting(&mut a);
+        let flow = a.step(Command::from(Action::Enter));
+        assert_eq!(
+            flow,
+            Flow::Promote {
+                name: "netdev-net".into(),
+                url: "https://h/net".into()
+            }
+        );
+        assert!(a.prompt().is_some());
+    }
+
+    #[test]
+    fn bad_names_are_refused_before_git_sees_them() {
+        for bad in ["", "-x", "a b", "origin"] {
+            let mut a = collected_app();
+            promoting(&mut a);
+            for _ in 0.."netdev-net".len() {
+                a.step(Command::from(Action::Backspace));
+            }
+            typed(&mut a, bad);
+            assert_eq!(
+                a.step(Command::from(Action::Enter)),
+                Flow::Continue,
+                "{bad:?}"
+            );
+            assert!(a.error().is_some(), "{bad:?}");
+            assert!(a.prompt().is_some(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_finished_promotion_turns_the_row_into_a_real_remote() {
+        let mut a = collected_app();
+        promoting(&mut a);
+        a.finish_promote("https://h/net", "netdev-net", Ok(()));
+        assert_eq!(a.prompt(), None);
+        let names: Vec<String> = a
+            .list()
+            .visible_cells()
+            .iter()
+            .map(|(_, c)| c[0].clone())
+            .collect();
+        assert_eq!(names, ["origin", "netdev-net", "usb/usb"]);
+        let under = a.list().visible_cells()[a.list().cursor()].1[0].clone();
+        assert_eq!(under, "netdev-net");
+        // Real now, so d refuses it and p says so.
+        a.step(Command::from(Action::Delete));
+        assert_eq!(a.confirming(), None);
+        assert!(a.notice().is_some_and(|n| n.contains("real remote")));
+    }
+
+    #[test]
+    fn a_failed_command_is_shown_as_the_last_line_git_printed() {
+        let status = std::process::Command::new("false").status().unwrap();
+        let e = Error::Failed {
+            command: "git remote add a..b u".into(),
+            status,
+            stderr: "fatal: 'a..b' is not a valid remote name\n".into(),
+        };
+        assert_eq!(short_reason(&e), "'a..b' is not a valid remote name");
+    }
+
+    #[test]
+    fn a_failed_promotion_shows_git_s_reason_and_keeps_the_prompt() {
+        let mut a = collected_app();
+        promoting(&mut a);
+        a.finish_promote(
+            "https://h/net",
+            "netdev-net",
+            Err(Error::NoRefs("x".into())),
+        );
+        assert!(a.error().is_some());
+        assert_eq!(a.prompt(), Some(("remote name", "netdev-net")));
+        assert_eq!(a.list().total(), 3);
     }
 }

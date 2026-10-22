@@ -17,7 +17,7 @@ use crate::tui::theme::Theme;
 const HINTS: &str = "j/k move  l/enter open  h/esc back  / i search  c clear  s sort  q quit";
 /// The top level has nowhere to go back to, and offers removing.
 const REMOTE_HINTS: &str =
-    "j/k move  l/enter open  / i search  c clear  s sort  n new  d remove  q quit";
+    "j/k move  l/enter open  / i search  s sort  n new  p promote  d remove  q quit";
 const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const SORT_HINTS: &str = " h/l column  r reverse  s/esc done";
 const SELECT_HINTS: &str = "space toggle  a all  enter write  / i search  c clear  s sort  q quit";
@@ -284,7 +284,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
                 Style::new().fg(theme.error),
             )),
             None => spans.push(Span::styled(
-                "  enter add  esc cancel",
+                "  enter ok  esc cancel",
                 Style::new().fg(theme.dim),
             )),
         }
@@ -544,6 +544,7 @@ mod tests {
     fn the_remote_hints_offer_d_and_fit_80_columns() {
         assert!(REMOTE_HINTS.contains("d remove"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("n new"), "{REMOTE_HINTS}");
+        assert!(REMOTE_HINTS.contains("p promote"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("/ i search"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.chars().count() <= 80, "{REMOTE_HINTS}");
     }

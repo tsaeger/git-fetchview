@@ -108,6 +108,7 @@ how many it hid, and opening mainline itself shows everything. See
 | `c`                 | clear the search                                 |
 | `s` then `h` `l`    | choose the sort column; `r` reverses             |
 | `n`                 | add a URL to your collected remotes              |
+| `p`                 | turn a collected remote into a real git remote   |
 | `d`                 | remove a collected remote, after `y`             |
 | `q`                 | quit, from anywhere                              |
 
