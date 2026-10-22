@@ -55,6 +55,12 @@ enum Task {
         #[arg(last = true)]
         extra: Vec<String>,
     },
+    /// Lint Markdown and check the Mermaid diagrams in it (needs `npm ci`).
+    Docs {
+        /// Fail if the tools are not installed, instead of skipping.
+        #[arg(long)]
+        require: bool,
+    },
     /// Check SPDX headers on all source files (or add them with --fix).
     Headers {
         /// Insert missing headers instead of failing.
@@ -100,6 +106,7 @@ fn run(task: Task) -> Result<()> {
     match task {
         Task::Ci => {
             run(Task::Headers { fix: false })?;
+            run(Task::Docs { require: false })?;
             run(Task::Lint)?;
             run(Task::Check)?;
             run(Task::Test)?;
@@ -149,6 +156,7 @@ fn run(task: Task) -> Result<()> {
             }
             cargo(&args)
         }
+        Task::Docs { require } => docs(require),
         Task::Headers { fix } => headers::run(fix),
         Task::Changelog { check, tag } => changelog(check, tag.as_deref()),
         Task::Dist => dist(),
@@ -159,6 +167,47 @@ fn run(task: Task) -> Result<()> {
             cargo(&["publish", "--dry-run", "--package", "git-fetchview"])
         }
     }
+}
+
+/// The Markdown tools are npm dev dependencies (`package.json`), installed
+/// with `npm ci`. They are optional locally so the Rust checks still run
+/// without node.
+fn docs(require: bool) -> Result<()> {
+    // CI always has the tools; a laptop may not.
+    let require = require || std::env::var_os("CI").is_some();
+    let lint = std::path::Path::new("node_modules/.bin/markdownlint-cli2");
+    let mermaid = std::path::Path::new("node_modules/mermaid");
+    if !lint.exists() || !mermaid.exists() {
+        if require {
+            bail!("the docs tools are not installed (run `npm ci`)");
+        }
+        eprintln!("xtask: skipping docs checks, run `npm ci` to enable them");
+        return Ok(());
+    }
+    exec(Command::new(lint))?;
+    let mut files = vec!["README.md".to_owned(), "AGENTS.md".to_owned()];
+    collect_markdown(std::path::Path::new("docs"), &mut files)?;
+    let mut cmd = Command::new("node");
+    cmd.arg("scripts/check-mermaid.mjs").args(&files);
+    exec(cmd)
+}
+
+/// Every `.md` file under `dir`, skipping `docs/superpowers`.
+fn collect_markdown(dir: &std::path::Path, out: &mut Vec<String>) -> Result<()> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)?.collect::<Result<_, _>>()?;
+    entries.sort_by_key(std::fs::DirEntry::path);
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            if path.ends_with("superpowers") {
+                continue;
+            }
+            collect_markdown(&path, out)?;
+        } else if path.extension().is_some_and(|e| e == "md") {
+            out.push(path.to_string_lossy().into_owned());
+        }
+    }
+    Ok(())
 }
 
 fn changelog(check: bool, tag: Option<&str>) -> Result<()> {

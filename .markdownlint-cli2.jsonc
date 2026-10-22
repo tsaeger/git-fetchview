@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Tom Saeger <tom.saeger@gmail.com>
+{
+  "globs": ["README.md", "AGENTS.md", "docs/**/*.md"],
+  "ignores": ["node_modules", "docs/superpowers/**"],
+  "config": {
+    "default": true,
+    // Prose is wrapped by hand and tables are wide.
+    "MD013": false,
+    // Mermaid blocks use <br/> in labels, and the SPDX header is an HTML comment.
+    "MD033": false,
+    // Table pipe alignment is cosmetic.
+    "MD060": false
+  }
+}

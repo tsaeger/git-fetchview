@@ -31,6 +31,8 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
+      # The docs checks need the npm dev tools; `ci` fails under CI without them.
+      - run: nix develop --command npm ci
       - run: nix develop --command cargo xtask ci
 
   msrv:

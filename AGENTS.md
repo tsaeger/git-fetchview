@@ -16,7 +16,8 @@ equivalent plain commands as a cut-and-paste trail. Linux and macOS are the prim
 - **Config:** only `git config` (`fetchview.*`), never a config file or env vars. Precedence: flag > git config > default.
 - **Viewer:** `fetchview.viewer` is a preset or a command (`{}` = `FETCH_HEAD`), run as `sh -c` through `Cmd::shell`; presets live in `viewer.rs`. A viewer's exit status is ignored except 127.
 - **The trail can't drift:** every external call is a `git::Cmd`; its `Display` is what is printed and what is run.
-- **Automation:** all CI/dev tasks are `cargo xtask <task>` (see README). CI should call xtask, not raw cargo.
+- **Automation:** all CI/dev tasks are `cargo xtask <task>` (see docs/development.md). CI should call xtask, not raw cargo.
+- **Docs:** `README.md` is for new users; reference and design go in `docs/`. `cargo xtask docs` lints Markdown and parses the Mermaid blocks (tools are npm dev dependencies, `npm ci`). Add diagrams as ```` ```mermaid ```` blocks.
 - Lints are workspace-wide: `unsafe` forbidden, clippy pedantic, `missing_docs` warn; `xtask clippy` denies warnings.
 - **Collected remotes:** `src/remotes/` holds pure parsers (`entry`, `file`,
   `source/*`) and the git-config layer (`registry`). Keep parsers free of I/O

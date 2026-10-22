@@ -3,6 +3,9 @@
   "private": true,
   "description": "Local dev tooling for git-fetchview (task tracking with backlog.md).",
   "devDependencies": {
-    "backlog.md": "^1.55.1"
+    "backlog.md": "^1.55.1",
+    "jsdom": "^30.1.3",
+    "markdownlint-cli2": "^0.24.0",
+    "mermaid": "^12.2.0"
   }
 }
