@@ -1,0 +1,24 @@
+---
+id: TASK-19
+title: 'TUI: remove a collected remote from the picker'
+status: To Do
+assignee: []
+created_date: '2026-10-22T02:59:00Z'
+labels: []
+dependencies: []
+ordinal: 18000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Press d on a collected row in the remote picker to remove it, after a y/n confirmation. Real remotes (from git config) are refused with a status-line note. Calls the same code as 'git fetchview remove', so every registered file that has it is edited. The row disappears at once. Part of the add-from-the-TUI work; design is being brainstormed.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 d on a collected row asks for confirmation, then removes it from the files and the list
+- [ ] #2 d on a real remote does nothing but show a note
+- [ ] #3 State-machine and render tests cover confirm, cancel and refusal
+- [ ] #4 Keys, README and docs/usage.md are updated
+<!-- AC:END -->
