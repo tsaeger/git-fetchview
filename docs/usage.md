@@ -19,7 +19,7 @@ The README covers the first steps. This is the reference.
 | `h` `l` / `←` `→`       | move the column cursor (the underlined header) |
 | `/` / `i`               | edit the search box at the top (substring, case-insensitive) |
 | `Esc` / `Enter`         | in the search box: leave it, keeping the text |
-| `c`                     | clear the search                            |
+| `c`                     | clear the search and the sort               |
 | `s`                     | sort the column under the cursor: ascending, descending, off |
 | `n`                     | remote list: add a URL. `Enter` adds it to the default remotes file and puts the cursor on its row, `Esc` cancels |
 | `A`                     | remote list: collect remotes without leaving the picker. `m` scans merges (the prompt starts as `HEAD -n 500`; give a range and `-n N` as you like), `t` scans `MAINTAINERS`, `f` reads a file of URLs. What it finds opens in the `add` multi-select, and `Enter` writes your choice to the default file |
@@ -32,7 +32,7 @@ While a remote's refs are loading, the status line shows a spinner and the
 remote's name. `Esc` or `Ctrl-C` give up, kill the `git ls-remote`, and
 return to the remote list. A slow or stalled remote never freezes the screen.
 
-Keys typed but not finished (`5`, `g`) show at the left of the status line, and `Esc` drops them. The search box is always on the top line and shows how many rows match. While you edit it, characters are text (so `q` types a `q`) and the list filters as you type. `Esc` or `Enter` leaves the box and the filter stays; `c` clears it. There is no sort mode. `h` and `l` (or the arrows) move a column cursor, shown as an underlined header (`name`, `url`, `tags`; refs sort by name only). `s` sorts the column under it: the first press is ascending (`↑` in the header), the second descending (`↓`), the third turns the sort off and restores the order git gave. Moving the cursor never changes the sort, which stays on its column until you press `s` on another one. Names sort naturally, so `v6.9` comes before `v6.10`, and descending puts the newest tags first. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. The cursor stays on its row when a sort changes, except that it goes to the top when the sort turns descending.
+Keys typed but not finished (`5`, `g`) show at the left of the status line, and `Esc` drops them. The search box is always on the top line and shows how many rows match. While you edit it, characters are text (so `q` types a `q`) and the list filters as you type. `Esc` or `Enter` leaves the box and the filter stays; `c` clears it and the sort too (the column cursor stays). There is no sort mode. `h` and `l` (or the arrows) move a column cursor, shown as an underlined header (`name`, `url`, `tags`; refs sort by name only). `s` sorts the column under it: the first press is ascending (`↑` in the header), the second descending (`↓`), the third turns the sort off and restores the order git gave. Moving the cursor never changes the sort, which stays on its column until you press `s` on another one. Names sort naturally, so `v6.9` comes before `v6.10`, and descending puts the newest tags first. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. The cursor stays on its row when a sort changes, except that it goes to the top when the sort turns descending.
 
 ## Going straight to a ref
 

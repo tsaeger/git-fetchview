@@ -16,7 +16,7 @@
 //! | `h` / `Left`            | column cursor one column left       |
 //! | `l` / `Right`           | column cursor one column right      |
 //! | `/` / `i`               | edit the search box                 |
-//! | `c`                     | clear search / filter               |
+//! | `c`                     | clear search and sort               |
 //! | `s`                     | sort the column: ascending, descending, none |
 //! | `Space`                 | toggle a row and advance, or the highlighted rows (multi-select) |
 //! | `J` / `K`, Shift-`↓`/`↑` | move and highlight a range (multi-select; Shift-arrows not in Terminal.app) |

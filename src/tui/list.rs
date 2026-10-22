@@ -353,9 +353,10 @@ impl List {
         self.refilter();
     }
 
-    /// Clear the filter.
+    /// Clear the filter and the sort. The column cursor stays where it is.
     pub fn clear(&mut self) {
         self.filter.clear();
+        self.sorted = None;
         self.refilter();
     }
 
@@ -758,6 +759,29 @@ mod tests {
 
     fn numbered(n: usize) -> List {
         List::new((0..n).map(|i| format!("row{i:02}")).collect())
+    }
+
+    #[test]
+    fn clear_drops_the_filter_and_the_sort_but_not_the_column_cursor() {
+        let key = |n: &str| SortKeys {
+            name: n.into(),
+            ..SortKeys::default()
+        };
+        let mut l = List::with_keys(
+            vec!["b".into(), "a".into(), "c".into()],
+            vec![key("b"), key("a"), key("c")],
+        );
+        l.move_column(1);
+        l.cycle_sort();
+        for c in "a".chars() {
+            l.push(c);
+        }
+        assert!(l.sort().is_some());
+        l.clear();
+        assert_eq!(l.sort(), None);
+        assert_eq!(l.filter(), "");
+        assert_eq!(l.column(), SortColumn::Url);
+        assert_eq!(l.visible(), [0, 1, 2]);
     }
 
     #[test]

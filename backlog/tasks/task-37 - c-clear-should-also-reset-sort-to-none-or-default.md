@@ -1,10 +1,10 @@
 ---
 id: TASK-37
 title: '''c'' clears the sort as well as the search'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T17:48:00Z'
-updated_date: '2026-10-22T18:48:00Z'
+updated_date: '2026-10-22T19:52:00Z'
 labels: []
 dependencies: []
 ordinal: 25000
@@ -18,7 +18,7 @@ ordinal: 25000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 c clears the search and the sort, in the picker and in the multi-select
-- [ ] #2 The column cursor stays where it is
-- [ ] #3 Unit tests in list.rs cover it; docs/usage.md, README and AGENTS.md say so
+- [x] #1 c clears the search and the sort, in the picker and in the multi-select
+- [x] #2 The column cursor stays where it is
+- [x] #3 Unit tests in list.rs cover it; docs/usage.md, README and AGENTS.md say so
 <!-- AC:END -->
