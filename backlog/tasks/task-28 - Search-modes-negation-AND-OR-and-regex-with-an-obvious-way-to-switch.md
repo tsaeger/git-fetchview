@@ -1,10 +1,10 @@
 ---
 id: TASK-28
 title: 'Search modes: negation, AND, OR and regex, with an obvious way to switch'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T03:16:00Z'
-updated_date: '2026-10-22T03:21:00Z'
+updated_date: '2026-10-22T05:56:00Z'
 labels: []
 dependencies: []
 ordinal: 16000
@@ -18,17 +18,17 @@ Today the search box is a case-insensitive substring match (tui/list.rs::matches
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Space-separated terms are ANDed and a leading ! excludes
-- [ ] #2 An explicit OR works and is documented
-- [ ] #3 A regex mode exists, shown in the search line, switched with one documented key
-- [ ] #4 An invalid regex shows an error in the box and does not change the list
-- [ ] #5 Unit tests cover each syntax and edge cases (empty term, lone !, escaped characters); a fuzz target covers the parser
-- [ ] #6 The search applies to every picker, including the add multi-select
-- [ ] #7 AGENTS.md, README keys table and docs/usage.md are updated, and the demos that show search are re-checked
+- [x] #1 Space-separated terms are ANDed and a leading ! excludes
+- [x] #2 An explicit OR works and is documented
+- [x] #3 A regex mode exists, shown in the search line, switched with one documented key
+- [x] #4 An invalid regex shows an error in the box and does not change the list
+- [x] #5 Unit tests cover each syntax and edge cases (empty term, lone !, escaped characters); a fuzz target covers the parser
+- [x] #6 The search applies to every picker, including the add multi-select
+- [x] #7 AGENTS.md, README keys table and docs/usage.md are updated, and the demos that show search are re-checked
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Decision: fzf-style simple mode. Space is AND, a leading ! negates a term, and a standalone | between terms is OR (spaces required). AND binds tighter than OR, no parentheses: 'v6.1 !rc | v6.2' means (v6.1 and not rc) or v6.2. Regex mode is the escape hatch for anything more. Regex engine: the regex crate (linear-time matching, so a typed pattern cannot hang the picker). Check cargo deny, MSRV 1.88.0 and the extra dependencies when adding it. Only the term parser needs a fuzz target.
+Demos that show search (sorting, merges, teaser) still use plain terms, which behave as before, so none needed re-recording.
 <!-- SECTION:NOTES:END -->
