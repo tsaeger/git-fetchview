@@ -1,0 +1,22 @@
+---
+id: TASK-17
+title: Run the fuzz targets
+status: To Do
+assignee: []
+created_date: '2026-10-22T02:54:00Z'
+labels: []
+dependencies: []
+ordinal: 16000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+The six fuzz targets (parse_ls_remote, parse_maintainers, parse_merge_subject, parse_remotes, parse_remotes_file, validate_url) have never been run in this setup, because cargo-fuzz and a nightly toolchain are not installed. Add them to the Nix dev shell or document how to install them, run each target for a few minutes, and fix any finding.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 cargo xtask fuzz runs from a documented setup
+- [ ] #2 Each target ran for at least 5 minutes with no crash, or findings are fixed with a test
+<!-- AC:END -->

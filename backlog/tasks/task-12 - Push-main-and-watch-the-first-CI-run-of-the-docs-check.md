@@ -1,0 +1,23 @@
+---
+id: TASK-12
+title: Push main and watch the first CI run of the docs check
+status: To Do
+assignee: []
+created_date: '2026-10-22T02:54:00Z'
+labels: []
+dependencies: []
+ordinal: 11000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+main is ahead of origin by several commits, including the demo GIFs (Git LFS) and the new CI step that runs npm ci and cargo xtask docs. That step has only run locally. Push, then confirm the ci jobs pass on ubuntu and macOS, and that LFS objects uploaded.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 main is pushed and the LFS objects are on the remote
+- [ ] #2 All four CI jobs pass, including npm ci and the docs check
+- [ ] #3 The demo GIFs render on the GitHub README
+<!-- AC:END -->
