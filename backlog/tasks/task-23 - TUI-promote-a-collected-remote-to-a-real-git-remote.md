@@ -4,6 +4,7 @@ title: 'TUI: promote a collected remote to a real git remote'
 status: To Do
 assignee: []
 created_date: '2026-10-22T03:05:00Z'
+updated_date: '2026-10-22T03:06:00Z'
 labels: []
 dependencies: []
 ordinal: 22000
@@ -24,3 +25,9 @@ Press p on a collected row in the remote picker to run 'git remote add <name> <u
 - [ ] #5 Tests cover the prompt, the refusal and the Cmd's printed form
 - [ ] #6 Keys, README and docs/usage.md are updated
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decision: the name prompt is prefilled with the label's parts joined by a dash (netdev/net-next -> netdev-net-next), editable before Enter.
+<!-- SECTION:NOTES:END -->
