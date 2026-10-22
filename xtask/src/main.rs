@@ -7,6 +7,7 @@
 
 mod headers;
 mod install;
+mod release;
 
 use std::process::{Command, ExitCode};
 
@@ -116,8 +117,15 @@ enum Task {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Everything required before cutting a release.
-    PrepRelease,
+    /// Prepare a release: bump the version, regenerate the changelog, run the
+    /// checks, then commit and tag. Never pushes; it prints the commands.
+    PrepRelease {
+        /// The new version, `0.1.1` or `v0.1.1`.
+        version: String,
+        /// Also run `cargo publish --dry-run`.
+        #[arg(long)]
+        publish_dry_run: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -195,11 +203,10 @@ fn run(task: Task) -> Result<()> {
         Task::Package { out } => package(&out),
         Task::ReleaseNotes { unreleased } => release_notes(unreleased),
         Task::Install { prefix, dry_run } => install::run(prefix.as_deref(), dry_run),
-        Task::PrepRelease => {
-            run(Task::Ci)?;
-            run(Task::Dist)?;
-            cargo(&["publish", "--dry-run", "--package", "git-fetchview"])
-        }
+        Task::PrepRelease {
+            version,
+            publish_dry_run,
+        } => release::prep(&version, publish_dry_run),
     }
 }
 
