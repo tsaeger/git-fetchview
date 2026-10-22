@@ -1,10 +1,10 @@
 ---
 id: TASK-22
 title: 'TUI: fetch a URL once without saving it'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T02:59:00Z'
-updated_date: '2026-10-22T03:03:00Z'
+updated_date: '2026-10-22T05:09:00Z'
 labels: []
 dependencies: []
 ordinal: 11000
@@ -18,10 +18,10 @@ Press o (open) in the remote picker to open a one-line prompt, like the one n op
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 o opens the prompt; Enter goes to the URL's refs, Esc cancels
-- [ ] #2 Nothing is written to any remotes file or git config
-- [ ] #3 The trail shows the full URL, as for any remote, with a password left out
-- [ ] #4 Invalid URLs are rejected the same way as in n
-- [ ] #5 Tests cover the prompt and the hand-off to the refs list
-- [ ] #6 Keys, README and docs/usage.md are updated
+- [x] #1 o opens the prompt; Enter goes to the URL's refs, Esc cancels
+- [x] #2 Nothing is written to any remotes file or git config
+- [x] #3 The trail shows the full URL, as for any remote, with a password left out
+- [x] #4 Invalid URLs are rejected the same way as in n
+- [x] #5 Tests cover the prompt and the hand-off to the refs list
+- [x] #6 Keys, README and docs/usage.md are updated
 <!-- AC:END -->
