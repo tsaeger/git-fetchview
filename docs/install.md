@@ -3,6 +3,27 @@
 
 # Installing
 
+## From a release
+
+Each release has an archive per platform: Linux x86_64, Linux aarch64 and macOS
+arm64, named `git-fetchview-vX.Y.Z-<target>.tar.gz`. Next to each is a
+`.sha256` file. They are not signed, so the checksum only tells you the
+download is intact.
+
+```sh
+shasum -a 256 -c git-fetchview-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+tar xzf git-fetchview-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
+```
+
+The archive holds `bin/` (`git-fetchview` and `git-fv`), `share/man/man1/`,
+the completions for bash, zsh and fish under `share/`, the license and the
+README. Copy `bin` and `share` under any prefix on your `PATH`, for example
+`~/.local` or `/usr/local`. The Linux binaries are built on the CI runner's
+glibc, so a distribution older than that may not run them; build from source
+there.
+
+## From source
+
 ```sh
 cargo xtask install                  # per-user
 cargo xtask install --prefix /opt/fv # or under a prefix

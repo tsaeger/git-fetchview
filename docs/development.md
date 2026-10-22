@@ -86,3 +86,36 @@ Tasks live in `backlog/` and are committed.
 and `--tag v1.2.3` labels the unreleased commits for a release.
 
 Targets: Linux and macOS.
+
+## Releases
+
+Pushing a tag that starts with `v` runs `.github/workflows/release.yml`. It
+builds an archive on Linux x86_64, Linux aarch64 and macOS arm64 with
+`cargo xtask package`, and publishes a GitHub release with the archives, their
+SHA-256 files and the changelog section for the tag as the notes. The
+archives are built with the toolchain `rust-toolchain.toml` pins, outside the
+Nix shell, because a binary linked inside it points at `/nix/store`.
+
+To cut a release:
+
+```sh
+cargo xtask prep-release                  # ci, man page, completions, publish --dry-run
+cargo xtask changelog --tag v0.2.0        # label the unreleased commits
+# bump version in Cargo.toml, commit, then:
+git tag v0.2.0 && git push origin main v0.2.0
+```
+
+To rehearse without publishing, run the workflow by hand from the Actions tab.
+It builds the same archives and notes, uploads them as workflow artifacts, and
+publishes nothing. Locally, `cargo xtask package` writes this machine's archive
+to `dist/`, and `cargo xtask release-notes --unreleased` prints the notes.
+
+Decided, and open to change:
+
+- **Signing:** none. Each archive has a SHA-256 file. GitHub's artifact
+  attestations are the next step if signatures are wanted.
+- **crates.io:** not published yet. `cargo xtask prep-release` already runs a
+  publish dry run, so it is one `cargo publish` away once the name is settled.
+- **Homebrew and Nix:** no tap and no package. The flake only provides
+  development shells. A tap that downloads these archives is the likely
+  first step, and a `packages.default` in the flake the second.

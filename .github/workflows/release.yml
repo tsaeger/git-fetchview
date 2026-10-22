@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Tom Saeger <tom.saeger@gmail.com>
+
+# Pushing a v* tag builds an archive on each platform and publishes a GitHub
+# release with them, their SHA-256 files and the changelog section as notes.
+# Run it by hand (Actions > release > Run workflow) to rehearse: it builds the
+# same archives and notes, uploads them as workflow artifacts and publishes
+# nothing.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux x86_64, Linux aarch64 and macOS arm64.
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      # Not in the Nix shell: a binary linked there points at /nix/store and
+      # would not run anywhere else. rustup installs the version that
+      # rust-toolchain.toml pins.
+      - run: cargo xtask package
+      - uses: actions/upload-artifact@v7
+        with:
+          name: archive-${{ matrix.os }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+
+  release:
+    name: release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The changelog needs the tags and the history.
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: archive-*
+          merge-multiple: true
+          path: dist
+      - name: Notes
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            nix develop --command cargo xtask release-notes > notes.md
+          else
+            nix develop --command cargo xtask release-notes --unreleased > notes.md
+          fi
+          cat notes.md
+      - name: Publish
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file notes.md
+      - name: Rehearsal, nothing published
+        if: github.ref_type != 'tag'
+        run: |
+          echo "Would publish:"
+          ls -l dist
+      - uses: actions/upload-artifact@v7
+        if: github.ref_type != 'tag'
+        with:
+          name: release-notes
+          path: notes.md

@@ -93,6 +93,19 @@ enum Task {
     },
     /// Generate man page and shell completions under target/.
     Dist,
+    /// Build a release archive for this machine under dist/: the binaries, man
+    /// pages and completions, with a SHA-256 file next to it.
+    Package {
+        /// Directory to write into.
+        #[arg(long, default_value = "dist")]
+        out: std::path::PathBuf,
+    },
+    /// Print the changelog section for a release, for the release notes.
+    ReleaseNotes {
+        /// The commits since the last tag, for a rehearsal before tagging.
+        #[arg(long)]
+        unreleased: bool,
+    },
     /// Build and install the binaries, man pages and shell completions.
     Install {
         /// Install under this prefix (`<prefix>/bin`, `<prefix>/share/...`)
@@ -179,6 +192,8 @@ fn run(task: Task) -> Result<()> {
         Task::Headers { fix } => headers::run(fix),
         Task::Changelog { check, tag } => changelog(check, tag.as_deref()),
         Task::Dist => dist(),
+        Task::Package { out } => package(&out),
+        Task::ReleaseNotes { unreleased } => release_notes(unreleased),
         Task::Install { prefix, dry_run } => install::run(prefix.as_deref(), dry_run),
         Task::PrepRelease => {
             run(Task::Ci)?;
@@ -186,6 +201,106 @@ fn run(task: Task) -> Result<()> {
             cargo(&["publish", "--dry-run", "--package", "git-fetchview"])
         }
     }
+}
+
+/// The package version, read from the root `Cargo.toml`.
+fn package_version() -> Result<String> {
+    let manifest = std::fs::read_to_string("Cargo.toml").context("reading Cargo.toml")?;
+    let mut in_package = false;
+    for line in manifest.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_package = line == "[package]";
+        } else if in_package && let Some(rest) = line.strip_prefix("version") {
+            let value = rest.trim_start().trim_start_matches('=').trim();
+            return Ok(value.trim_matches('"').to_owned());
+        }
+    }
+    bail!("no version in the [package] table of Cargo.toml")
+}
+
+/// The target triple of the compiler that will build the archive.
+fn host_triple() -> Result<String> {
+    let out = Command::new("rustc")
+        .arg("-vV")
+        .output()
+        .context("running rustc -vV")?;
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("host: ").map(str::to_owned))
+        .context("rustc -vV printed no host line")
+}
+
+/// `<hash>  <file>` from whichever SHA-256 tool this machine has.
+fn sha256(dir: &std::path::Path, file: &str) -> Result<String> {
+    for (program, args) in [("sha256sum", &[][..]), ("shasum", &["-a", "256"][..])] {
+        if let Ok(out) = Command::new(program)
+            .args(args)
+            .arg(file)
+            .current_dir(dir)
+            .output()
+            && out.status.success()
+        {
+            return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
+        }
+    }
+    bail!("neither sha256sum nor shasum is installed")
+}
+
+/// The archive `cargo xtask package` writes: `bin/`, `share/man/man1/` and the
+/// completions, laid out as `cargo xtask install --prefix` does, plus the
+/// license and README, under one directory named for the version and target.
+fn package(out: &std::path::Path) -> Result<()> {
+    let name = format!("git-fetchview-v{}-{}", package_version()?, host_triple()?);
+    let stage = out.join(&name);
+    if stage.exists() {
+        std::fs::remove_dir_all(&stage)?;
+    }
+    std::fs::create_dir_all(&stage)?;
+    install::run(Some(&stage), false)?;
+    // cargo's own bookkeeping for `cargo install --root`, not part of the release.
+    for junk in [".crates.toml", ".crates2.json"] {
+        let _ = std::fs::remove_file(stage.join(junk));
+    }
+    for file in ["LICENSE", "README.md"] {
+        std::fs::copy(file, stage.join(file)).with_context(|| format!("copying {file}"))?;
+    }
+    let archive = format!("{name}.tar.gz");
+    let mut tar = Command::new("tar");
+    tar.arg("-czf")
+        .arg(out.join(&archive))
+        .arg("-C")
+        .arg(out)
+        .arg(&name);
+    exec(tar)?;
+    std::fs::write(
+        out.join(format!("{archive}.sha256")),
+        sha256(out, &archive)?,
+    )?;
+    eprintln!("wrote {}", out.join(&archive).display());
+    Ok(())
+}
+
+/// The changelog section for the latest tag, or for the commits since it.
+fn release_notes(unreleased: bool) -> Result<()> {
+    let mut cmd = Command::new("git-cliff");
+    cmd.args(["--config", "cliff.toml", "--strip", "header"]);
+    cmd.arg(if unreleased {
+        "--unreleased"
+    } else {
+        "--latest"
+    });
+    let out = cmd
+        .output()
+        .context("failed to run git-cliff (nix develop has it)")?;
+    if !out.status.success() {
+        bail!(
+            "git-cliff failed:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    print!("{}", String::from_utf8_lossy(&out.stdout));
+    Ok(())
 }
 
 /// What the coverage figures leave out: the project's own tooling, the fuzz

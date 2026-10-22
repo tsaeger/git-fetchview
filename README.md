@@ -31,8 +31,22 @@ machine. A password embedded in a URL is left out of the trail and the picker.
 
 ## Install
 
-You need git, a Rust toolchain (1.88 or newer), and a viewer. The default
-viewer is `tig`. Linux and macOS are supported.
+You need git and a viewer; the default viewer is `tig`. Linux (x86_64 and
+aarch64) and macOS (Apple silicon) are supported.
+
+Download the archive for your machine from the
+[releases page](https://github.com/tsaeger/git-fetchview/releases), check it
+against its `.sha256` file, and unpack it under a prefix on your `PATH`:
+
+```sh
+shasum -a 256 -c git-fetchview-v0.1.0-aarch64-apple-darwin.tar.gz.sha256
+tar xzf git-fetchview-v0.1.0-aarch64-apple-darwin.tar.gz
+cp -R git-fetchview-v0.1.0-aarch64-apple-darwin/{bin,share} ~/.local/
+```
+
+That puts `git-fetchview` and `git-fv` in `~/.local/bin`, with the man pages and
+shell completions under `~/.local/share`. To build it yourself instead you need
+a Rust toolchain (1.88 or newer):
 
 ```sh
 git clone https://github.com/tsaeger/git-fetchview
@@ -40,9 +54,7 @@ cd git-fetchview
 cargo xtask install
 ```
 
-That installs `git-fetchview` and `git-fv` into `~/.cargo/bin`, plus man pages
-and shell completions. Make sure `~/.cargo/bin` is on your `PATH`. Details,
-including `--prefix`, are in [docs/install.md](docs/install.md).
+Details, including `--prefix`, are in [docs/install.md](docs/install.md).
 
 ### Have an AI agent do it
 
