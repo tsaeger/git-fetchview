@@ -39,6 +39,7 @@ All notable changes to this project are documented here. The format follows
 - Run cargo xtask ci on GitHub Actions (f60a6e5)
 - Track demo gifs with git lfs (d9d2a1b)
 - Bump actions/checkout to v7 (9c8fb4f)
+- **cliff:** Leave backlog commits out of the changelog (9a94108)
 
 ### Documentation
 
@@ -56,6 +57,7 @@ All notable changes to this project are documented here. The format follows
 - Re-record the README demo with the search box (96d71d7)
 - Add architecture notes and a Markdown and Mermaid check (243d4d5)
 - Rewrite the README for new users (19d1020)
+- Add a demo for each feature and an index (91ef380)
 
 ### Fixed
 
@@ -70,12 +72,7 @@ All notable changes to this project are documented here. The format follows
 
 - Add license, gitignore and tool config (8ef7682)
 - Ignore the _preview directory (547d6bd)
-- Track tasks with backlog.md (c04d5c8)
-- Add the first backlog tasks (b918a46)
-- **backlog:** Close TASK-2, track column alignment as TASK-4 (b3ccbc7)
-- **backlog:** Close TASK-8, the CI failure was a runner outage (f9d958e)
-- **backlog:** Close TASK-9, checkout v7 passes CI (94c50b7)
-- **backlog:** Close TASK-10 and TASK-11 (c1ae99a)
+- Ignore the _preview folder under docs (8212388)
 
 ### Tests
 
