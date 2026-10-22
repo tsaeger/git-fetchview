@@ -108,6 +108,7 @@ how many it hid, and opening mainline itself shows everything. See
 | `/` or `i`          | edit the search box; `Esc` or `Enter` leaves it  |
 | `c`                 | clear the search                                 |
 | `s` then `h` `l`    | choose the sort column; `r` reverses             |
+| `H`                 | in the refs list: show or hide the hidden refs   |
 | `n`                 | add a URL to your collected remotes              |
 | `A`                 | collect remotes from merges, MAINTAINERS or a file |
 | `o`                 | browse a URL once, without saving it             |

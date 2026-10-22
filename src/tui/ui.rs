@@ -14,7 +14,8 @@ use crate::tui::list::{List, SortOrder};
 use crate::tui::select::Select;
 use crate::tui::theme::Theme;
 
-const HINTS: &str = "j/k move  l/enter open  h/esc back  / i search  c clear  s sort  q quit";
+/// Short, because the hidden-refs count can come first on the same line.
+const HINTS: &str = "j/k move  l open  h back  / i search  s sort  q quit";
 /// The top level has nowhere to go back to, and offers removing.
 const REMOTE_HINTS: &str =
     "l open  / i search  s sort  n new  o browse  A scan  p promote  d remove  q quit";
@@ -293,7 +294,11 @@ fn status_line<'a>(app: &'a App, theme: &Theme, pending: &str) -> Line<'a> {
         ));
         if app.level() == Level::Refs && app.hidden() > 0 {
             spans.push(Span::styled(
-                format!("{} hidden  ", app.hidden()),
+                format!(
+                    "{}{} hidden (H)  ",
+                    if app.showing_hidden() { "showing " } else { "" },
+                    app.hidden()
+                ),
                 Style::new().fg(theme.accent),
             ));
         }
@@ -631,14 +636,35 @@ mod tests {
                     name: "refs/heads/dev".into(),
                     oid: "1234567890".into(),
                 }],
-                hidden: 412,
+                hidden: vec![
+                    RemoteRef {
+                        name: "refs/pull/1/merge".into(),
+                        oid: "abcdef0123".into(),
+                    };
+                    412
+                ],
                 note: None,
             })
         };
         app.update(Action::Enter, &mut load);
         let theme = Theme::from(ThemeName::default());
         let lines = screen(90, 6, |f| draw(f, &app, &theme, ""));
-        assert!(lines.last().unwrap().contains("412 hidden"), "{lines:?}");
+        assert!(
+            lines.last().unwrap().contains("412 hidden (H)"),
+            "{lines:?}"
+        );
+        app.step(crate::tui::keys::Command::from(Action::ShowHidden));
+        let lines = screen(90, 6, |f| draw(f, &app, &theme, ""));
+        assert!(
+            lines.last().unwrap().contains("showing 412 hidden (H)"),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn the_refs_status_line_fits_80_columns_with_the_longest_hidden_count() {
+        let counted = format!("showing {} hidden (H)  ", 99_999);
+        assert!(counted.chars().count() + HINTS.chars().count() <= 80);
     }
 
     fn searched(typing: bool) -> App {

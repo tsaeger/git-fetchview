@@ -143,6 +143,24 @@ commit, so a tag that reuses a name for different work still shows. Opening one
 of the listed repositories shows all of its refs. The status line says how many
 were hidden.
 
+### Hiding host noise
+
+A big repository on GitHub, Gitea or GitLab advertises more than branches and
+tags. Every pull request has a `refs/pull/N/merge` next to its `head`, and
+GitLab adds `refs/merge-requests/N/merge`, `refs/pipelines/*`,
+`refs/environments/*` and `refs/keep-around/*`. `fetchview.hideRefs` lists
+patterns for refs to leave out, where `*` matches any run of characters:
+
+```sh
+git config --add fetchview.hideRefs 'refs/pull/*/merge'
+```
+
+With nothing set, those five patterns are hidden. Setting the key at any level
+replaces them, and a single empty value turns this hiding off. The count joins
+the other hidden refs on the status line, and `H` shows them among the rest and
+hides them again. `refs/pull/N/head` is not hidden, so a pull request still
+shows up.
+
 The lists are cached in `.git/fetchview/hidden` and fetched again once they are a
 day old. If a refresh fails, the old copy is used and the status line says so.
 `git fetchview --refresh` fetches them now.

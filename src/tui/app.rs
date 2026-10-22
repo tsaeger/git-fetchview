@@ -76,8 +76,8 @@ pub struct Selection {
 pub struct Loaded {
     /// Refs to show.
     pub refs: Vec<RemoteRef>,
-    /// How many refs were left out.
-    pub hidden: usize,
+    /// The refs that were left out, so they can be shown again.
+    pub hidden: Vec<RemoteRef>,
     /// A problem worth a line in the status bar, such as a stale cache.
     pub note: Option<String>,
 }
@@ -94,6 +94,13 @@ impl From<Vec<RemoteRef>> for Loaded {
 /// Fetches the refs of a remote (`git ls-remote`), inline. The event loop does
 /// this on another thread instead; this is for tests and simple callers.
 pub type Loader<'a> = dyn FnMut(&Remote) -> Result<Loaded> + 'a;
+
+/// The menus there are.
+#[derive(Debug, Clone, Copy)]
+enum Menu {
+    /// Where to collect remotes from.
+    Scan,
+}
 
 /// What a prompt is asking for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -205,7 +212,10 @@ pub struct App {
     remotes: Vec<Remote>,
     remote_list: List,
     refs: Vec<RemoteRef>,
-    hidden: usize,
+    /// The refs shown by default, kept while the hidden ones are on show.
+    default_refs: Vec<RemoteRef>,
+    hidden_refs: Vec<RemoteRef>,
+    showing_hidden: bool,
     ref_list: List,
     level: Level,
     typing: bool,
@@ -223,7 +233,7 @@ pub struct App {
     /// It is always the last one, and never in the list.
     temp: Option<usize>,
     /// The scan menu is open.
-    menu: bool,
+    menu: Option<Menu>,
     /// What a scan in progress is looking at, for the status line.
     scanning: Option<&'static str>,
     next_load: u64,
@@ -240,7 +250,9 @@ impl App {
             remotes,
             remote_list: List::with_cells(cells, keys),
             refs: Vec::new(),
-            hidden: 0,
+            default_refs: Vec::new(),
+            hidden_refs: Vec::new(),
+            showing_hidden: false,
             ref_list: List::default(),
             level: Level::Remotes,
             typing: false,
@@ -253,7 +265,7 @@ impl App {
             confirming: None,
             prompt: None,
             temp: None,
-            menu: false,
+            menu: None,
             scanning: None,
             next_load: 0,
             spinner: 0,
@@ -282,7 +294,8 @@ impl App {
     /// The scan menu's items, if it is open.
     #[must_use]
     pub fn menu(&self) -> Option<&'static str> {
-        self.menu.then_some("m merges  t maintainers  f url file")
+        self.menu
+            .map(|Menu::Scan| "m merges  t maintainers  f url file")
     }
 
     /// What a scan in progress is looking at, if one is.
@@ -324,7 +337,13 @@ impl App {
     /// How many refs of the open remote are hidden.
     #[must_use]
     pub fn hidden(&self) -> usize {
-        self.hidden
+        self.hidden_refs.len()
+    }
+
+    /// Whether the hidden refs are being shown with the rest.
+    #[must_use]
+    pub fn showing_hidden(&self) -> bool {
+        self.showing_hidden
     }
 
     /// Current level.
@@ -344,7 +363,7 @@ impl App {
     pub fn mode(&self) -> Mode {
         if self.confirming.is_some() {
             Mode::Confirm
-        } else if self.menu {
+        } else if self.menu.is_some() {
             Mode::Menu
         } else if self.prompt.is_some() {
             Mode::Prompt
@@ -434,7 +453,7 @@ impl App {
         if self.loading.is_some() {
             return self.step_loading(action);
         }
-        if self.menu {
+        if self.menu.is_some() {
             return self.step_menu(action);
         }
         if self.prompt.is_some() {
@@ -465,7 +484,8 @@ impl App {
             Action::New => self.open_prompt(PromptKind::AddUrl),
             Action::Promote => self.ask_promote(),
             Action::Open => self.open_prompt(PromptKind::OpenUrl),
-            Action::Scan => self.menu = self.level == Level::Remotes,
+            Action::Scan => self.menu = (self.level == Level::Remotes).then_some(Menu::Scan),
+            Action::ShowHidden => self.toggle_hidden(),
             Action::Enter => return self.enter(),
             Action::Quit
             | Action::Interrupt
@@ -500,7 +520,7 @@ impl App {
 
     /// One letter picks where to collect from, anything else closes the menu.
     fn step_menu(&mut self, action: Action) -> Flow {
-        self.menu = false;
+        self.menu = None;
         match action {
             Action::Char('m') => {
                 self.prompt = Some(Prompt {
@@ -807,28 +827,15 @@ impl App {
         }
         self.loading = None;
         match result {
-            Ok(loaded) if loaded.refs.is_empty() && loaded.hidden == 0 => {
+            Ok(loaded) if loaded.refs.is_empty() && loaded.hidden.is_empty() => {
                 self.error = Some(Error::NoRefs(self.remotes[index].name.clone()).to_string());
                 self.forget_temp();
             }
             Ok(Loaded { refs, hidden, note }) => {
-                let cells = refs
-                    .iter()
-                    .map(|r| vec![r.name.clone(), r.oid.get(..7).unwrap_or(&r.oid).to_owned()])
-                    .collect();
-                let keys = refs
-                    .iter()
-                    .map(|r| SortKeys {
-                        name: r.name.clone(),
-                        url: r.name.clone(),
-                        tags: String::new(),
-                        group: 0,
-                    })
-                    .collect();
-                self.ref_list = List::with_cells(cells, keys)
-                    .with_cycle(vec![SortOrder::Default, SortOrder::Label]);
-                self.refs = refs;
-                self.hidden = hidden;
+                self.default_refs.clone_from(&refs);
+                self.hidden_refs = hidden;
+                self.showing_hidden = false;
+                self.set_refs(refs);
                 if note.is_some() {
                     self.notice = note;
                 }
@@ -870,9 +877,47 @@ impl App {
             self.level = Level::Remotes;
             self.chosen = None;
             self.refs.clear();
+            self.default_refs.clear();
+            self.hidden_refs.clear();
+            self.showing_hidden = false;
             self.ref_list = List::default();
             self.forget_temp();
         }
+    }
+
+    /// Show these refs in the refs list.
+    fn set_refs(&mut self, refs: Vec<RemoteRef>) {
+        let cells = refs
+            .iter()
+            .map(|r| vec![r.name.clone(), r.oid.get(..7).unwrap_or(&r.oid).to_owned()])
+            .collect();
+        let keys = refs
+            .iter()
+            .map(|r| SortKeys {
+                name: r.name.clone(),
+                url: r.name.clone(),
+                tags: String::new(),
+                group: 0,
+            })
+            .collect();
+        self.ref_list =
+            List::with_cells(cells, keys).with_cycle(vec![SortOrder::Default, SortOrder::Label]);
+        self.refs = refs;
+    }
+
+    /// `H`: show the hidden refs among the others, or hide them again.
+    fn toggle_hidden(&mut self) {
+        if self.level != Level::Refs || self.hidden_refs.is_empty() {
+            return;
+        }
+        self.showing_hidden = !self.showing_hidden;
+        let mut refs = self.default_refs.clone();
+        if self.showing_hidden {
+            // Git lists refs in byte order, so this puts them where they were.
+            refs.extend(self.hidden_refs.iter().cloned());
+            refs.sort_by(|a, b| a.name.cmp(&b.name));
+        }
+        self.set_refs(refs);
     }
 
     /// Drop the remote typed at the `o` prompt, if one is held.
@@ -1192,6 +1237,100 @@ mod tests {
         assert_eq!(a.list().filter(), "");
     }
 
+    fn hidden_ref() -> RemoteRef {
+        RemoteRef {
+            name: "refs/pull/1/merge".into(),
+            oid: "abcdef0123".into(),
+        }
+    }
+
+    fn with_hidden() -> (App, Load) {
+        let mut a = app();
+        let load = load_request(a.step(Command::from(Action::Enter)));
+        let named = |n: &str| RemoteRef {
+            name: n.into(),
+            oid: "0123456789".into(),
+        };
+        a.finish_load(
+            load.id,
+            Ok(Loaded {
+                refs: vec![
+                    named("HEAD"),
+                    named("refs/heads/main"),
+                    named("refs/pull/1/head"),
+                ],
+                hidden: vec![named("refs/pull/1/merge"), named("refs/pull/2/merge")],
+                note: None,
+            }),
+        );
+        (a, load)
+    }
+
+    fn shown_names(a: &App) -> Vec<String> {
+        a.list()
+            .visible_cells()
+            .iter()
+            .map(|(_, c)| c[0].clone())
+            .collect()
+    }
+
+    #[test]
+    fn capital_h_shows_the_hidden_refs_in_order_and_hides_them_again() {
+        let (mut a, _) = with_hidden();
+        assert_eq!(a.hidden(), 2);
+        assert!(!a.showing_hidden());
+        assert_eq!(
+            shown_names(&a),
+            ["HEAD", "refs/heads/main", "refs/pull/1/head"]
+        );
+
+        a.step(Command::from(Action::ShowHidden));
+        assert!(a.showing_hidden());
+        assert_eq!(
+            shown_names(&a),
+            [
+                "HEAD",
+                "refs/heads/main",
+                "refs/pull/1/head",
+                "refs/pull/1/merge",
+                "refs/pull/2/merge"
+            ]
+        );
+        // A hidden ref can be picked while shown.
+        a.step(Command::from(Action::Bottom));
+        let Flow::Done(selection) = a.step(Command::from(Action::Enter)) else {
+            panic!("expected a selection");
+        };
+        assert_eq!(selection.refname, "refs/pull/2/merge");
+
+        a.step(Command::from(Action::ShowHidden));
+        assert!(!a.showing_hidden());
+        assert_eq!(shown_names(&a).len(), 3);
+    }
+
+    #[test]
+    fn capital_h_does_nothing_in_the_remote_list_or_with_nothing_hidden() {
+        let mut a = app();
+        a.step(Command::from(Action::ShowHidden));
+        assert!(!a.showing_hidden());
+        let mut b = app();
+        let mut load = |_: &Remote| Ok(refs_of(&["refs/heads/main"]));
+        b.update(Action::Enter, &mut load);
+        b.step(Command::from(Action::ShowHidden));
+        assert!(!b.showing_hidden());
+    }
+
+    #[test]
+    fn going_back_forgets_the_hidden_refs_and_the_toggle() {
+        let (mut a, _) = with_hidden();
+        a.step(Command::from(Action::ShowHidden));
+        a.step(Command::from(Action::Back));
+        let load = load_request(a.step(Command::from(Action::Enter)));
+        a.finish_load(load.id, Ok(refs_of(&["refs/heads/main"])));
+        assert_eq!(a.hidden(), 0);
+        assert!(!a.showing_hidden());
+    }
+
     #[test]
     fn hidden_refs_are_counted_and_the_load_note_shows() {
         let mut a = app();
@@ -1201,7 +1340,7 @@ mod tests {
                     name: "refs/heads/dev".into(),
                     oid: "1234567890".into(),
                 }],
-                hidden: 3,
+                hidden: vec![hidden_ref(); 3],
                 note: Some("stale".into()),
             })
         };
@@ -1217,7 +1356,7 @@ mod tests {
         let mut load = |_: &Remote| {
             Ok(Loaded {
                 refs: Vec::new(),
-                hidden: 5,
+                hidden: vec![hidden_ref(); 5],
                 note: None,
             })
         };

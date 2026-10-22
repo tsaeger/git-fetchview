@@ -33,6 +33,8 @@ pub struct Config {
     pub viewer: String,
     /// Repositories whose refs the refs picker leaves out.
     pub hide: Vec<Rule>,
+    /// Ref patterns the refs picker always leaves out.
+    pub hide_refs: Vec<String>,
 }
 
 impl Config {
@@ -76,10 +78,12 @@ impl Config {
                 reason,
             }
         })?;
+        let hide_refs = hide::parse_patterns(get_all(hide::PATTERNS_KEY)?.as_deref());
         Ok(Self {
             theme,
             viewer,
             hide,
+            hide_refs,
         })
     }
 }

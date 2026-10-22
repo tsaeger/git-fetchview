@@ -125,6 +125,15 @@ impl World {
         );
     }
 
+    /// A ref in the bare remote, as a host makes for a pull or merge request.
+    fn host_ref(&self, name: &str) {
+        git(
+            self.bare.path(),
+            self.home.path(),
+            &["update-ref", name, "refs/heads/main"],
+        );
+    }
+
     fn git_output(&self, args: &[&str]) -> String {
         let out = Command::new("git")
             .args(args)
@@ -582,6 +591,55 @@ fn quitting_the_multi_select_adds_nothing_and_a_bad_range_is_reported() {
     s.send("\r");
     s.wait_for("no-such-tag");
     s.wait_until("the remote list", |t| !t.contains("scanning"));
+    s.send("q");
+    assert!(s.wait_exit().success());
+}
+
+#[test]
+fn merge_refs_and_host_namespaces_are_hidden_until_h_shows_them() {
+    let world = World::new();
+    for name in [
+        "refs/pull/1/head",
+        "refs/pull/1/merge",
+        "refs/merge-requests/3/merge",
+        "refs/pipelines/9",
+    ] {
+        world.host_ref(name);
+    }
+    let mut s = session!(world);
+    s.wait_for("origin");
+    s.send("\r");
+    s.wait_for("refs of origin");
+    s.wait_for("3 hidden (H)");
+    s.wait_for("refs/pull/1/head");
+    assert!(!s.text().contains("refs/pull/1/merge"), "{}", s.text());
+
+    s.send("H");
+    s.wait_for("showing 3 hidden (H)");
+    s.wait_for("refs/pull/1/merge");
+    s.wait_for("refs/pipelines/9");
+
+    s.send("H");
+    s.wait_until("hidden again", |t| !t.contains("refs/pull/1/merge"));
+    s.send("q");
+    assert!(s.wait_exit().success());
+}
+
+#[test]
+fn an_empty_hide_refs_value_turns_the_pattern_hiding_off() {
+    let world = World::new();
+    world.host_ref("refs/pull/1/merge");
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(world.home.path().join("gitconfig"))
+        .unwrap()
+        .write_all(b"[fetchview]\n\thideRefs =\n")
+        .unwrap();
+    let mut s = session!(world);
+    s.wait_for("origin");
+    s.send("\r");
+    s.wait_for("refs/pull/1/merge");
+    assert!(!s.text().contains("hidden (H)"), "{}", s.text());
     s.send("q");
     assert!(s.wait_exit().success());
 }

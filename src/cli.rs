@@ -168,6 +168,7 @@ fn pick_and_view(
     let hide = tui::HideRefs {
         rules: config.hide,
         refresh,
+        patterns: config.hide_refs,
     };
     let Some(selection) = tui::pick(remotes, config.theme, notice(&loaded.warnings), &hide)? else {
         return Ok(());

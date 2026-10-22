@@ -33,6 +33,19 @@ pub const DEFAULT: [&str; 2] = [
     "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git refs/tags/*",
 ];
 
+/// Config key: ref patterns that are always hidden. Multi-valued.
+pub const PATTERNS_KEY: &str = "fetchview.hideRefs";
+
+/// Used when [`PATTERNS_KEY`] is not set anywhere: the merge refs hosts make
+/// for every pull request, and the namespaces GitLab keeps for itself.
+pub const DEFAULT_PATTERNS: [&str; 5] = [
+    "refs/pull/*/merge",
+    "refs/merge-requests/*/merge",
+    "refs/pipelines/*",
+    "refs/environments/*",
+    "refs/keep-around/*",
+];
+
 /// How long a cached list is used before it is fetched again.
 pub const MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
@@ -73,6 +86,53 @@ pub fn parse_rules(values: Option<&str>) -> std::result::Result<Vec<Rule>, (Stri
         .filter(|line| !line.trim().is_empty())
         .map(|line| parse_rule(line).map_err(|reason| (line.trim().to_owned(), reason)))
         .collect()
+}
+
+/// Parse the values of [`PATTERNS_KEY`]: patterns split on whitespace. `None`
+/// (unset) gives the defaults, and blank values are ignored, so a single empty
+/// value turns this hiding off.
+#[must_use]
+pub fn parse_patterns(values: Option<&str>) -> Vec<String> {
+    match values {
+        None => DEFAULT_PATTERNS.iter().map(|p| (*p).to_owned()).collect(),
+        Some(text) => text.split_whitespace().map(str::to_owned).collect(),
+    }
+}
+
+/// Whether `text` matches `pattern`, where `*` stands for any run of
+/// characters, `/` included.
+#[must_use]
+pub fn glob_match(pattern: &str, text: &str) -> bool {
+    let (p, t) = (pattern.as_bytes(), text.as_bytes());
+    let (mut pi, mut ti) = (0, 0);
+    let mut star: Option<(usize, usize)> = None;
+    while ti < t.len() {
+        if pi < p.len() && p[pi] == b'*' {
+            star = Some((pi, ti));
+            pi += 1;
+        } else if pi < p.len() && p[pi] == t[ti] {
+            pi += 1;
+            ti += 1;
+        } else if let Some((sp, st)) = star {
+            pi = sp + 1;
+            ti = st + 1;
+            star = Some((sp, st + 1));
+        } else {
+            return false;
+        }
+    }
+    p[pi..].iter().all(|&c| c == b'*')
+}
+
+/// Split `refs` into the ones to show and the ones matching a pattern, in
+/// their original order.
+#[must_use]
+pub fn hide_matching(
+    patterns: &[String],
+    refs: Vec<RemoteRef>,
+) -> (Vec<RemoteRef>, Vec<RemoteRef>) {
+    refs.into_iter()
+        .partition(|r| !patterns.iter().any(|p| glob_match(p, &r.name)))
 }
 
 /// Cache file name for a rule; the same rule always gives the same name.
@@ -186,20 +246,19 @@ impl Hidden {
         }
     }
 
-    /// Drop the hidden refs of `refs`, returning the rest and how many went.
+    /// Split `refs` into the ones to show and the ones other trees carry.
     /// Asking for one of the listed repositories itself hides nothing.
     #[must_use]
-    pub fn apply(&self, remote_url: &str, refs: Vec<RemoteRef>) -> (Vec<RemoteRef>, usize) {
+    pub fn apply(
+        &self,
+        remote_url: &str,
+        refs: Vec<RemoteRef>,
+    ) -> (Vec<RemoteRef>, Vec<RemoteRef>) {
         if self.urls.iter().any(|u| same_url(u, remote_url)) {
-            return (refs, 0);
+            return (refs, Vec::new());
         }
-        let before = refs.len();
-        let kept: Vec<_> = refs
-            .into_iter()
-            .filter(|r| !self.entries.contains(&(r.name.clone(), r.oid.clone())))
-            .collect();
-        let hidden = before - kept.len();
-        (kept, hidden)
+        refs.into_iter()
+            .partition(|r| !self.entries.contains(&(r.name.clone(), r.oid.clone())))
     }
 }
 
@@ -223,6 +282,72 @@ mod tests {
             name: name.into(),
             oid: oid.into(),
         }
+    }
+
+    #[test]
+    fn a_star_matches_any_run_including_slashes() {
+        assert!(glob_match("refs/pull/*/merge", "refs/pull/12/merge"));
+        assert!(glob_match("refs/pull/*/merge", "refs/pull//merge"));
+        assert!(!glob_match("refs/pull/*/merge", "refs/pull/12/head"));
+        assert!(!glob_match("refs/pull/*/merge", "refs/pull/merge"));
+        assert!(glob_match("refs/pipelines/*", "refs/pipelines/9"));
+        assert!(!glob_match("refs/pipelines/*", "refs/pipelinesx"));
+        assert!(glob_match("refs/heads/main", "refs/heads/main"));
+        assert!(!glob_match("refs/heads/main", "refs/heads/main2"));
+        assert!(glob_match("*", "anything/at/all"));
+        assert!(glob_match("a*b*c", "aXXbYYc"));
+        assert!(!glob_match("a*b*c", "aXXbYY"));
+        assert!(glob_match("", ""));
+        assert!(!glob_match("", "x"));
+    }
+
+    #[test]
+    fn unset_patterns_mean_the_host_noise_and_blank_means_off() {
+        let defaults = parse_patterns(None);
+        assert!(defaults.contains(&"refs/pull/*/merge".to_owned()));
+        assert!(defaults.contains(&"refs/merge-requests/*/merge".to_owned()));
+        assert!(defaults.contains(&"refs/pipelines/*".to_owned()));
+        assert_eq!(parse_patterns(Some("")), Vec::<String>::new());
+        assert_eq!(parse_patterns(Some("\n  \n")), Vec::<String>::new());
+        assert_eq!(
+            parse_patterns(Some("refs/x/*\nrefs/y/* refs/z")),
+            ["refs/x/*", "refs/y/*", "refs/z"]
+        );
+    }
+
+    #[test]
+    fn matching_refs_are_split_out_in_their_original_order() {
+        let patterns = parse_patterns(None);
+        let (shown, hidden) = hide_matching(
+            &patterns,
+            vec![
+                r("HEAD", "1"),
+                r("refs/heads/main", "1"),
+                r("refs/merge-requests/3/head", "2"),
+                r("refs/merge-requests/3/merge", "3"),
+                r("refs/pipelines/77", "4"),
+                r("refs/pull/9/merge", "5"),
+                r("refs/pull/9/head", "6"),
+            ],
+        );
+        let names = |v: &[RemoteRef]| v.iter().map(|x| x.name.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            names(&shown),
+            [
+                "HEAD",
+                "refs/heads/main",
+                "refs/merge-requests/3/head",
+                "refs/pull/9/head"
+            ]
+        );
+        assert_eq!(
+            names(&hidden),
+            [
+                "refs/merge-requests/3/merge",
+                "refs/pipelines/77",
+                "refs/pull/9/merge"
+            ]
+        );
     }
 
     #[test]
@@ -294,7 +419,7 @@ mod tests {
                 r("refs/heads/dev", "3333"),
             ],
         );
-        assert_eq!(n, 1);
+        assert_eq!(n.len(), 1);
         assert_eq!(
             kept.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(),
             ["refs/tags/v2", "refs/heads/dev"]
@@ -313,7 +438,7 @@ mod tests {
             &mut fetch,
         );
         let (kept, n) = hidden.apply(URL, vec![r("refs/tags/v1", "1111")]);
-        assert_eq!((kept.len(), n), (1, 0));
+        assert_eq!((kept.len(), n.len()), (1, 0));
     }
 
     #[test]
@@ -352,7 +477,7 @@ mod tests {
         let mut fail = |_: &Rule| Err(crate::Error::NoRefs("x".into()));
         let hidden = Hidden::load(&rules, dir.path(), now, true, &mut fail);
         let (_, n) = hidden.apply("git://other", vec![r("refs/tags/v1", "1111")]);
-        assert_eq!(n, 1);
+        assert_eq!(n.len(), 1);
         assert!(hidden.note.unwrap().contains(URL));
     }
 
@@ -368,7 +493,7 @@ mod tests {
             &mut fail,
         );
         let (kept, n) = hidden.apply("git://other", vec![r("refs/tags/v1", "1111")]);
-        assert_eq!((kept.len(), n), (1, 0));
+        assert_eq!((kept.len(), n.len()), (1, 0));
         assert!(hidden.note.is_some());
         assert!(fs::read_dir(dir.path()).unwrap().next().is_none());
     }

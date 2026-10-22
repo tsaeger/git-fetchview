@@ -65,6 +65,8 @@ pub enum Action {
     Open,
     /// Open the menu of places to collect remotes from.
     Scan,
+    /// Show or hide the refs that were left out of the refs list.
+    ShowHidden,
     /// Say yes to the question being asked.
     Confirm,
     /// Clear the search / filter.
@@ -280,6 +282,7 @@ fn map_normal(code: KeyCode) -> Option<Action> {
         KeyCode::Char('p') => Some(Action::Promote),
         KeyCode::Char('o') => Some(Action::Open),
         KeyCode::Char('A') => Some(Action::Scan),
+        KeyCode::Char('H') => Some(Action::ShowHidden),
         KeyCode::Char('q') => Some(Action::Quit),
         _ => None,
     })
@@ -341,6 +344,18 @@ mod tests {
         assert_eq!(
             p.feed(key(KeyCode::Char('5')), Mode::Confirm),
             cmd(Action::Back, None)
+        );
+    }
+
+    #[test]
+    fn capital_h_shows_the_hidden_refs() {
+        assert_eq!(
+            map(key(KeyCode::Char('H')), Mode::Normal),
+            Some(Action::ShowHidden)
+        );
+        assert_eq!(
+            map(key(KeyCode::Char('H')), Mode::Typing),
+            Some(Action::Char('H'))
         );
     }
 

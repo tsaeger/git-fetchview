@@ -20,7 +20,7 @@ use crate::cli::AddSource;
 use crate::commands;
 use crate::error::{Error, Result};
 use crate::git::{self, Cancel, Remote};
-use crate::hide::{Hidden, Rule};
+use crate::hide::{self, Hidden, Rule};
 use crate::remotes::entry::{Entry, key as repo_key};
 use crate::remotes::registry;
 use app::{App, Flow, Load, Loaded, Selection};
@@ -35,6 +35,8 @@ pub struct HideRefs {
     pub rules: Vec<Rule>,
     /// Refetch their lists even if the cache is recent.
     pub refresh: bool,
+    /// Ref patterns that are always hidden, such as `refs/pull/*/merge`.
+    pub patterns: Vec<String>,
 }
 
 /// Run the picker. Returns `None` if the user quit.
@@ -84,10 +86,12 @@ fn list_refs(
         *hidden = Some(loaded);
     }
     let hidden = hidden.get_or_insert_with(Hidden::default);
-    let (refs, count) = hidden.apply(&remote.url, refs);
+    let (refs, mut gone) = hidden.apply(&remote.url, refs);
+    let (refs, noise) = hide::hide_matching(&hide.patterns, refs);
+    gone.extend(noise);
     Ok(Loaded {
         refs,
-        hidden: count,
+        hidden: gone,
         note: hidden.note.take(),
     })
 }
