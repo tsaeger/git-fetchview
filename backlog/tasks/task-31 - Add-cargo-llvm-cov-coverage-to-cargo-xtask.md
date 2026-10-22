@@ -1,9 +1,10 @@
 ---
 id: TASK-31
 title: Add cargo-llvm-cov coverage to cargo xtask
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T03:29:00Z'
+updated_date: '2026-10-22T05:50:00Z'
 labels: []
 dependencies: []
 ordinal: 17500
@@ -17,9 +18,15 @@ Measure test coverage with cargo-llvm-cov. Add 'cargo xtask coverage' that runs 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 cargo xtask coverage prints a summary and --html and --lcov write reports
-- [ ] #2 cargo-llvm-cov and llvm-tools come from the Nix dev shell, and the task is skipped with a hint when the tool is missing locally
-- [ ] #3 xtask, fuzz, main.rs and the bin shims are excluded from the figures
-- [ ] #4 The CI, badge and minimum-coverage questions are decided and written down
-- [ ] #5 docs/development.md lists the task
+- [x] #1 cargo xtask coverage prints a summary and --html and --lcov write reports
+- [x] #2 cargo-llvm-cov and llvm-tools come from the Nix dev shell, and the task is skipped with a hint when the tool is missing locally
+- [x] #3 xtask, fuzz, main.rs and the bin shims are excluded from the figures
+- [x] #4 The CI, badge and minimum-coverage questions are decided and written down
+- [x] #5 docs/development.md lists the task
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+96% of lines covered locally. The new coverage CI job has not run on GitHub yet (TASK-12).
+<!-- SECTION:NOTES:END -->
