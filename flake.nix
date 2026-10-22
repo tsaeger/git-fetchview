@@ -34,6 +34,18 @@
           ];
         };
 
+        # Fuzzing needs a nightly compiler for the sanitizer flags, so it gets
+        # its own shell: `nix develop .#fuzz --command cargo xtask fuzz`.
+        fuzz = pkgs.mkShell {
+          packages = [
+            (pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.minimal.override {
+              extensions = [ "rust-src" "llvm-tools-preview" ];
+            }))
+            pkgs.cargo-fuzz
+            pkgs.git
+          ];
+        };
+
         # The minimum supported Rust version, to check that `rust-version` in
         # Cargo.toml is true. Keep the version in step with it.
         msrv = pkgs.mkShell {

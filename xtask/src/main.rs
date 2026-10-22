@@ -46,11 +46,14 @@ enum Task {
     Audit,
     /// Tests under Miri (needs nightly + miri).
     Miri,
-    /// Run a cargo-fuzz target (needs nightly + cargo-fuzz).
+    /// Run a cargo-fuzz target (needs nightly + cargo-fuzz; see development.md).
     Fuzz {
         /// Fuzz target name.
-        #[arg(default_value = "parse_ls_remote")]
+        #[arg(default_value = "parse_ls_remote", conflicts_with = "all")]
         target: String,
+        /// Run every target in turn, each with the same extra arguments.
+        #[arg(long)]
+        all: bool,
         /// Extra arguments after `--` (e.g. `-max_total_time=60`).
         #[arg(last = true)]
         extra: Vec<String>,
@@ -148,13 +151,12 @@ fn run(task: Task) -> Result<()> {
             cargo(&["audit"])
         }
         Task::Miri => cargo(&["+nightly", "miri", "test", "--workspace"]),
-        Task::Fuzz { target, extra } => {
-            let mut args = vec!["+nightly", "fuzz", "run", &target];
-            if !extra.is_empty() {
-                args.push("--");
-                args.extend(extra.iter().map(String::as_str));
+        Task::Fuzz { target, all, extra } => {
+            let targets = if all { fuzz_targets()? } else { vec![target] };
+            for target in targets {
+                fuzz(&target, &extra)?;
             }
-            cargo(&args)
+            Ok(())
         }
         Task::Docs { require } => docs(require),
         Task::Headers { fix } => headers::run(fix),
@@ -167,6 +169,38 @@ fn run(task: Task) -> Result<()> {
             cargo(&["publish", "--dry-run", "--package", "git-fetchview"])
         }
     }
+}
+
+/// Every fuzz target, by file name, in order.
+fn fuzz_targets() -> Result<Vec<String>> {
+    let mut names: Vec<String> = std::fs::read_dir("fuzz/fuzz_targets")
+        .context("fuzz/fuzz_targets is missing")?
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            (path.extension()? == "rs").then(|| path.file_stem()?.to_str().map(str::to_owned))?
+        })
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
+/// Run one target. With rustup the nightly toolchain is selected with
+/// `+nightly`; in the Nix fuzz shell `cargo` already is nightly.
+fn fuzz(target: &str, extra: &[String]) -> Result<()> {
+    let rustup = Command::new("rustup")
+        .arg("--version")
+        .output()
+        .is_ok_and(|out| out.status.success());
+    let mut args: Vec<&str> = Vec::new();
+    if rustup {
+        args.push("+nightly");
+    }
+    args.extend(["fuzz", "run", target]);
+    if !extra.is_empty() {
+        args.push("--");
+        args.extend(extra.iter().map(String::as_str));
+    }
+    cargo(&args)
 }
 
 /// The Markdown tools are npm dev dependencies (`package.json`), installed
