@@ -112,6 +112,23 @@ fn add_url_writes_the_default_file_and_registers_it_once() {
 }
 
 #[test]
+fn list_into_a_closed_pipe_exits_quietly() {
+    // `git fetchview list | head` closes the pipe early. That must not panic.
+    let repo = Repo::new();
+    repo.fv(&["add", "--all", "url", NET]);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_git-fetchview"));
+    cmd.arg("list");
+    repo.isolate(&mut cmd, repo.path());
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = cmd.spawn().unwrap();
+    drop(child.stdout.take());
+    let out = child.wait_with_output().unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!err.contains("panicked"), "{err}");
+    assert!(out.status.success(), "{err}");
+}
+
+#[test]
 fn list_shows_label_url_tags_and_file() {
     let repo = Repo::new();
     repo.fv(&["add", "--all", "url", NET]);

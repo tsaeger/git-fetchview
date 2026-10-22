@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{self, IsTerminal, Read};
+use std::io::{self, IsTerminal, Read, Write};
 use std::path::PathBuf;
 
 use crate::cli::{AddArgs, AddSource};
@@ -169,10 +169,9 @@ pub fn add(args: &AddArgs) -> Result<()> {
     write.extend(plan.tag_updates);
 
     if args.dry_run {
-        println!("would write to {}:", target_path.display());
-        for entry in &write {
-            println!("{}", render_line(entry));
-        }
+        let lines = std::iter::once(format!("would write to {}:", target_path.display()))
+            .chain(write.iter().map(render_line));
+        print_lines(lines)?;
         eprintln!("{summary}");
         return Ok(());
     }
@@ -201,16 +200,29 @@ pub fn list() -> Result<()> {
     for warning in &loaded.warnings {
         eprintln!("warning: {warning}");
     }
-    for file in &loaded.files {
-        for entry in &file.entries {
+    print_lines(loaded.files.iter().flat_map(|file| {
+        file.entries.iter().map(move |entry| {
             let tags = entry.tags.iter().cloned().collect::<Vec<_>>().join(",");
-            println!(
+            format!(
                 "{}\t{}\t{}\t{}",
                 entry.display_label(),
                 entry.url,
                 tags,
                 file.path.display()
-            );
+            )
+        })
+    }))
+}
+
+/// Print lines to stdout. A reader that goes away (`... | head`) is not an
+/// error, so stop quietly instead of panicking like `println!` does.
+fn print_lines(lines: impl IntoIterator<Item = String>) -> Result<()> {
+    let mut out = io::stdout().lock();
+    for line in lines {
+        match writeln!(out, "{line}") {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::BrokenPipe => break,
+            Err(e) => return Err(e.into()),
         }
     }
     Ok(())
