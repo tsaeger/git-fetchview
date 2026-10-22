@@ -50,4 +50,6 @@ panic = "abort"     # drop unwinding machinery
 strip = "symbols"   # remove symbols and debuginfo
 
 [dev-dependencies]
+portable-pty = "0.9"
 tempfile = "3.27.0"
+vt100 = "0.18"

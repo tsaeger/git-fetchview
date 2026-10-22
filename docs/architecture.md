@@ -184,6 +184,11 @@ fetch is injected as a closure in the tests, so they need no network.
 - Unit tests sit next to the code. The picker state machines and the parsers
   are covered most heavily.
 - `tests/` runs the built binary against throwaway repositories.
+- `tests/pty.rs` runs the binary in a pseudo-terminal and reads the screen
+  through a terminal emulator (`portable-pty` and `vt100`, dev dependencies).
+  It covers picking, the trail left on screen, leaving the alternate screen,
+  and cancelling a stalled load. It needs no network, and skips itself where no
+  pty can be opened.
 - `fuzz/` has a target for each parser: `ls-remote` output, `MAINTAINERS`,
   merge subjects, the remotes file, remotes lists and URL validation.
 - `cargo xtask ci` runs all of it except fuzzing and Miri. See
