@@ -1,9 +1,10 @@
 ---
 id: TASK-16
 title: Treat https://github.com/x/y and git@github.com:x/y as one repo
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T02:54:00Z'
+updated_date: '2026-10-22T03:27:00Z'
 labels: []
 dependencies: []
 ordinal: 5000
@@ -17,7 +18,7 @@ The same GitHub repo can be written as an https URL, an ssh:// URL or an scp-sty
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 entry::key gives one key for https, ssh and scp-style forms of the same host and path
-- [ ] #2 Unit tests cover the forms, including a .git suffix and a trailing slash
-- [ ] #3 Two different hosts or paths still get different keys
+- [x] #1 entry::key gives one key for https, ssh and scp-style forms of the same host and path
+- [x] #2 Unit tests cover the forms, including a .git suffix and a trailing slash
+- [x] #3 Two different hosts or paths still get different keys
 <!-- AC:END -->
