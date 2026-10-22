@@ -58,6 +58,14 @@ mod tests {
     }
 
     #[test]
+    fn an_ssh_remote_hides_the_https_entry_for_the_same_repo() {
+        let entries = [Entry::new("https://github.com/a/b", "merge")];
+        let got = picker_remotes(vec![real("origin", "git@github.com:a/b.git")], &entries);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].name, "origin");
+    }
+
+    #[test]
     fn a_real_remote_hides_the_same_repo_from_the_entries() {
         let entries = [Entry::new("git://git.kernel.org/pub/scm/x/net", "merge")];
         let got = picker_remotes(

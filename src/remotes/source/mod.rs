@@ -124,11 +124,20 @@ mod tests {
     }
 
     #[test]
-    fn dedupe_keeps_ssh_separate() {
-        let out = dedupe(vec![
-            Entry::new("https://h/p/x", "t"),
-            Entry::new("git@h:p/x", "t"),
-        ]);
-        assert_eq!(out.len(), 2);
+    fn dedupe_folds_ssh_into_the_https_url_whichever_comes_first() {
+        for order in [
+            ["https://h/p/x", "git@h:p/x"],
+            ["git@h:p/x", "https://h/p/x"],
+        ] {
+            let out = dedupe(order.iter().map(|u| Entry::new(*u, "t")).collect());
+            assert_eq!(out.len(), 1, "{order:?}");
+            assert_eq!(out[0].url, "https://h/p/x");
+        }
+    }
+
+    #[test]
+    fn dedupe_keeps_a_lone_ssh_url_as_written() {
+        let out = dedupe(vec![Entry::new("git@h:p/x", "t")]);
+        assert_eq!(out[0].url, "git@h:p/x");
     }
 }

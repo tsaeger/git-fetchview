@@ -62,6 +62,11 @@ are comments and are kept when the file is rewritten. The label defaults to the
 last two path segments (`netdev/net`), and the tags record where the entry came
 from, so `/maintainers` in the picker shows only those.
 
+Two URLs name the same repo when the host and path match, so the `https`,
+`ssh://` and `git@host:path` forms of one repo count once, and a collected
+entry is hidden when a real remote is the same repo. Only the host and path
+are compared; a non-default port makes a different repo.
+
 URLs from merge subjects and `MAINTAINERS` are untrusted. Only `https`, `http`,
 `git`, `ssh` and scp-style URLs are accepted. Anything else, such as `ext::`
 helpers or `file:` URLs, is rejected and counted in the summary.

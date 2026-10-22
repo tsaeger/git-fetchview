@@ -49,8 +49,6 @@ impl Entry {
 #[error("{0}")]
 pub struct Rejected(pub &'static str);
 
-const WEB_SCHEMES: [&str; 3] = ["https", "http", "git"];
-
 /// Check that `raw` is a URL we are willing to store and fetch from.
 ///
 /// Returns the URL with any embedded password removed.
@@ -172,29 +170,43 @@ fn trim_path(path: &str) -> String {
     path.trim_end_matches('/').to_owned()
 }
 
+/// Drop the port a scheme uses when none is given, so `ssh://h:22/p` and
+/// `ssh://h/p` agree.
+fn strip_default_port<'a>(scheme: &str, authority: &'a str) -> &'a str {
+    let default = match scheme {
+        "ssh" => ":22",
+        "https" => ":443",
+        "http" => ":80",
+        "git" => ":9418",
+        _ => return authority,
+    };
+    authority.strip_suffix(default).unwrap_or(authority)
+}
+
 /// Identity of a repo: two URLs with the same key name the same repo.
 ///
-/// The host is lowercased, an empty port (`host:/path`) and a trailing `/`
-/// or `.git` are ignored. For
-/// `http`, `https` and `git` the scheme and user are ignored too. `ssh://`
-/// and scp-style URLs keep theirs, since they are not interchangeable.
+/// The key is `host[:port]/path`. The scheme and user are ignored, so the
+/// https, `ssh://` and scp-style (`git@host:path`) spellings of one repo
+/// agree, as do `git://` and `http`. The host is lowercased. A trailing `/` or
+/// `.git`, a leading `/` in an scp-style path, an empty port (`host:/path`)
+/// and a scheme's default port are ignored. Any other port still counts.
 #[must_use]
 pub fn key(url: &str) -> String {
     let url = url.trim();
-    if let Some((scheme, rest)) = url.split_once("://") {
+    let (host, path) = if let Some((scheme, rest)) = url.split_once("://") {
         let scheme = scheme.to_ascii_lowercase();
         let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
-        let authority = strip_empty_port(authority);
-        let path = trim_path(path);
-        if WEB_SCHEMES.contains(&scheme.as_str()) {
-            format!("{}{path}", hostport(authority).to_ascii_lowercase())
-        } else {
-            format!("{scheme}://{}{path}", authority.to_ascii_lowercase())
-        }
+        let host = strip_default_port(&scheme, strip_empty_port(hostport(authority)));
+        (host, path)
     } else {
         let (head, path) = url.split_once(':').unwrap_or((url, ""));
-        format!("{}:{}", head.to_ascii_lowercase(), trim_path(path))
-    }
+        (hostport(head), path)
+    };
+    format!(
+        "{}/{}",
+        host.to_ascii_lowercase(),
+        trim_path(path).trim_start_matches('/')
+    )
 }
 
 /// A short name from the last two path segments: `netdev/net-next`.
@@ -331,13 +343,39 @@ mod tests {
     }
 
     #[test]
-    fn ssh_and_scp_forms_are_distinct_from_web_and_each_other() {
-        let web = key("https://github.com/a/b");
-        let scp = key("git@github.com:a/b.git");
-        let ssh = key("ssh://git@github.com/a/b");
-        assert_ne!(web, scp);
-        assert_ne!(scp, ssh);
-        assert_ne!(web, ssh);
+    fn https_ssh_and_scp_forms_of_one_repo_share_a_key() {
+        let forms = [
+            "https://github.com/a/b",
+            "https://github.com/a/b.git",
+            "https://github.com/a/b/",
+            "http://GitHub.com/a/b",
+            "git://github.com/a/b",
+            "ssh://git@github.com/a/b",
+            "ssh://git@github.com:22/a/b.git",
+            "git@github.com:a/b",
+            "git@github.com:a/b.git",
+            "git@github.com:/a/b",
+            "github.com:a/b",
+        ];
+        let first = key(forms[0]);
+        for form in forms {
+            assert_eq!(key(form), first, "{form}");
+        }
+    }
+
+    #[test]
+    fn different_hosts_paths_and_ports_keep_different_keys() {
+        let base = key("https://github.com/a/b");
+        for other in [
+            "https://gitlab.com/a/b",
+            "https://github.com/a/c",
+            "https://github.com/c/b",
+            "git@github.com:a/c",
+            "ssh://git@github.com:2222/a/b",
+            "https://github.com:8443/a/b",
+        ] {
+            assert_ne!(key(other), base, "{other}");
+        }
     }
 
     #[test]
