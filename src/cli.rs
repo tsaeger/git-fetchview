@@ -89,7 +89,7 @@ pub struct AddArgs {
 }
 
 /// Where `add` looks for remotes.
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 pub enum AddSource {
     /// Pull URLs from merge commit subjects.
     Merges {

@@ -96,7 +96,8 @@ fn row(entry: &Entry, have: bool) -> Row {
 
 /// The rows the picker shows: new entries first, selectable, then every entry
 /// that is already collected (in this file or another), shown as `(have)`.
-fn picker_rows(plan: &Plan) -> Vec<Row> {
+#[must_use]
+pub fn picker_rows(plan: &Plan) -> Vec<Row> {
     plan.new
         .iter()
         .map(|e| row(e, false))
@@ -114,24 +115,36 @@ fn row_cells(entry: &Entry) -> Vec<String> {
     vec![entry.display_label(), redact_url(&entry.url), tags]
 }
 
-/// Collect remotes from a source into a remotes file.
+/// What a scan found, sorted by where each repo already is, and where the
+/// result would be written.
+#[derive(Debug)]
+pub struct Prepared {
+    /// New, tag-update and already-present entries.
+    pub plan: Plan,
+    /// URLs that failed validation.
+    pub rejected: usize,
+    /// The remotes file to write.
+    pub path: PathBuf,
+    /// What to store in `fetchview.remotes` for it.
+    pub stored: String,
+    /// Which config level to register it in.
+    pub scope: Scope,
+    /// Problems with the registered files, for the caller to show.
+    pub warnings: Vec<String>,
+}
+
+/// Run a source's scan and sort the results against the registered files.
 ///
 /// # Errors
-/// The source cannot be read, there is no terminal and `--all` was not
-/// given, or the file or config cannot be written.
-pub fn add(args: &AddArgs) -> Result<()> {
-    let theme = Config::load(None, None)?.theme;
-    let scanned = scan(&args.source)?;
-    let (target_path, stored, scope) = target(args)?;
-
+/// The source cannot be read, or the registered files cannot be listed.
+pub fn prepare(source: &AddSource, target: (PathBuf, String, Scope)) -> Result<Prepared> {
+    let scanned = scan(source)?;
+    let (path, stored, scope) = target;
     let loaded = registry::load(&registry::files()?);
-    for warning in &loaded.warnings {
-        eprintln!("warning: {warning}");
-    }
     let (in_target, elsewhere): (Vec<_>, Vec<_>) = loaded
         .files
         .iter()
-        .partition(|f| registry::same_path(&f.path, &target_path));
+        .partition(|f| registry::same_path(&f.path, &path));
     let in_target: Vec<Entry> = in_target
         .into_iter()
         .flat_map(|f| f.entries.clone())
@@ -140,24 +153,72 @@ pub fn add(args: &AddArgs) -> Result<()> {
         .into_iter()
         .flat_map(|f| f.entries.clone())
         .collect();
-    let plan = plan(scanned.entries, &in_target, &elsewhere);
+    Ok(Prepared {
+        plan: plan(scanned.entries, &in_target, &elsewhere),
+        rejected: scanned.rejected,
+        path,
+        stored,
+        scope,
+        warnings: loaded.warnings,
+    })
+}
+
+/// The default target: `.git/fetchview.remotes`, registered locally.
+///
+/// # Errors
+/// The git directory cannot be found.
+pub fn default_target() -> Result<(PathBuf, String, Scope)> {
+    Ok((
+        registry::default_file()?,
+        registry::DEFAULT_FILE.to_owned(),
+        Scope::Local,
+    ))
+}
+
+/// Write the chosen new entries (indexes into `prepared.plan.new`) and merge
+/// the tags of entries already in the file. Returns the entries that were
+/// added.
+///
+/// # Errors
+/// The file or the config cannot be written.
+pub fn write_chosen(prepared: &Prepared, chosen: &[usize]) -> Result<Vec<Entry>> {
+    let added: Vec<Entry> = chosen
+        .iter()
+        .filter_map(|&i| prepared.plan.new.get(i).cloned())
+        .collect();
+    let mut write = added.clone();
+    write.extend(prepared.plan.tag_updates.iter().cloned());
+    if !write.is_empty() {
+        registry::write_entries(&prepared.path, &prepared.stored, prepared.scope, &write)?;
+    }
+    Ok(added)
+}
+
+/// Collect remotes from a source into a remotes file.
+///
+/// # Errors
+/// The source cannot be read, there is no terminal and `--all` was not
+/// given, or the file or config cannot be written.
+pub fn add(args: &AddArgs) -> Result<()> {
+    let theme = Config::load(None, None)?.theme;
+    let prepared = prepare(&args.source, target(args)?)?;
+    for warning in &prepared.warnings {
+        eprintln!("warning: {warning}");
+    }
+    let plan = &prepared.plan;
 
     // The picker is for choosing among what a search found. URLs named by hand
     // are already the choice, and with nothing new there is nothing to choose.
     let named_by_hand = matches!(args.source, AddSource::Url { .. });
-    let chosen: Vec<Entry> = if args.all || named_by_hand || plan.new.is_empty() {
-        plan.new.clone()
+    let chosen: Vec<usize> = if args.all || named_by_hand || plan.new.is_empty() {
+        (0..plan.new.len()).collect()
     } else {
         if !(io::stdin().is_terminal() && io::stdout().is_terminal()) {
             return Err(Error::NotATerminal);
         }
-        match tui::select_many(picker_rows(&plan), theme)? {
+        match tui::select_many(picker_rows(plan), theme)? {
             None => return Ok(()),
-            Some(picked) => picked
-                .into_iter()
-                .filter(|&i| i < plan.new.len())
-                .map(|i| plan.new[i].clone())
-                .collect(),
+            Some(picked) => picked.into_iter().filter(|&i| i < plan.new.len()).collect(),
         }
     };
 
@@ -171,24 +232,21 @@ pub fn add(args: &AddArgs) -> Result<()> {
         chosen.len(),
         plan.tag_updates.len(),
         plan.present.len(),
-        scanned.rejected
+        prepared.rejected
     );
-    let mut write = chosen;
-    write.extend(plan.tag_updates);
 
     if args.dry_run {
-        let lines = std::iter::once(format!("would write to {}:", target_path.display()))
-            .chain(write.iter().map(render_line));
+        let write = chosen
+            .iter()
+            .map(|&i| plan.new[i].clone())
+            .chain(plan.tag_updates.iter().cloned());
+        let lines = std::iter::once(format!("would write to {}:", prepared.path.display()))
+            .chain(write.map(|e| render_line(&e)));
         print_lines(lines)?;
         eprintln!("{summary}");
         return Ok(());
     }
-    if write.is_empty() {
-        eprintln!("{summary}");
-        return Ok(());
-    }
-
-    registry::write_entries(&target_path, &stored, scope, &write)?;
+    write_chosen(&prepared, &chosen)?;
     eprintln!("{summary}");
     Ok(())
 }

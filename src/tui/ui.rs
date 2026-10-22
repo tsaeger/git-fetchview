@@ -17,7 +17,7 @@ use crate::tui::theme::Theme;
 const HINTS: &str = "j/k move  l/enter open  h/esc back  / i search  c clear  s sort  q quit";
 /// The top level has nowhere to go back to, and offers removing.
 const REMOTE_HINTS: &str =
-    "l open  / i search  s sort  n new  o browse  p promote  d remove  q quit";
+    "l open  / i search  s sort  n new  o browse  A scan  p promote  d remove  q quit";
 const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const SORT_HINTS: &str = " h/l column  r reverse  s/esc done";
 const SELECT_HINTS: &str = "space toggle  a all  enter write  / i search  c clear  s sort  q quit";
@@ -229,42 +229,10 @@ fn typing_hints(theme: &Theme) -> Line<'static> {
     ))
 }
 
-/// Draw the picker.
-pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
-    frame.render_widget(Block::new().style(base(theme)), frame.area());
-    let [search, body, status] = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Min(1),
-        Constraint::Length(1),
-    ])
-    .areas(frame.area());
-    frame.render_widget(
-        Paragraph::new(search_line(app.list(), app.typing(), theme)).style(base(theme)),
-        search,
-    );
-
-    let title = match (app.level(), app.chosen_remote()) {
-        (Level::Refs, Some(remote)) => format!(" refs of {remote} "),
-        _ => " remotes ".to_owned(),
-    };
-    let (headers, rows): (&[Header], Vec<TableRow>) = {
-        let rows = app
-            .list()
-            .visible_cells()
-            .into_iter()
-            .map(|(_, cells)| TableRow {
-                cells: cells.to_vec(),
-                style: Style::new(),
-            })
-            .collect();
-        match app.level() {
-            Level::Refs => (&REF_HEADERS, rows),
-            Level::Remotes => (&REMOTE_HEADERS, rows),
-        }
-    };
-    render_table(frame, body, title, headers, app.list(), rows, theme);
-
-    let line = if let Some(name) = app.loading() {
+/// The bottom line of the picker: whatever the app is busy with or asking,
+/// else the sort, the hidden count and the key hints.
+fn status_line<'a>(app: &'a App, theme: &Theme, pending: &str) -> Line<'a> {
+    if let Some(name) = app.loading() {
         let frame = SPINNER[app.spinner() % SPINNER.len()];
         Line::from(vec![
             Span::styled(
@@ -272,6 +240,17 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
                 Style::new().fg(theme.accent),
             ),
             Span::styled("esc cancel", Style::new().fg(theme.dim)),
+        ])
+    } else if let Some(what) = app.scanning() {
+        Line::from(Span::styled(
+            format!("scanning {what}\u{2026}"),
+            Style::new().fg(theme.accent),
+        ))
+    } else if let Some(items) = app.menu() {
+        Line::from(vec![
+            Span::styled("collect from: ", Style::new().fg(theme.accent)),
+            Span::styled(items, Style::new().fg(theme.fg)),
+            Span::styled("  esc cancel", Style::new().fg(theme.dim)),
         ])
     } else if let Some((label, text)) = app.prompt() {
         let mut spans = vec![
@@ -325,7 +304,45 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
         };
         spans.push(Span::styled(hints, Style::new().fg(theme.dim)));
         Line::from(spans)
+    }
+}
+
+/// Draw the picker.
+pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
+    frame.render_widget(Block::new().style(base(theme)), frame.area());
+    let [search, body, status] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .areas(frame.area());
+    frame.render_widget(
+        Paragraph::new(search_line(app.list(), app.typing(), theme)).style(base(theme)),
+        search,
+    );
+
+    let title = match (app.level(), app.chosen_remote()) {
+        (Level::Refs, Some(remote)) => format!(" refs of {remote} "),
+        _ => " remotes ".to_owned(),
     };
+    let (headers, rows): (&[Header], Vec<TableRow>) = {
+        let rows = app
+            .list()
+            .visible_cells()
+            .into_iter()
+            .map(|(_, cells)| TableRow {
+                cells: cells.to_vec(),
+                style: Style::new(),
+            })
+            .collect();
+        match app.level() {
+            Level::Refs => (&REF_HEADERS, rows),
+            Level::Remotes => (&REMOTE_HEADERS, rows),
+        }
+    };
+    render_table(frame, body, title, headers, app.list(), rows, theme);
+
+    let line = status_line(app, theme, pending);
     frame.render_widget(Paragraph::new(line).style(base(theme)), status);
 }
 
@@ -528,6 +545,21 @@ mod tests {
     }
 
     #[test]
+    fn the_status_line_shows_the_scan_menu_and_a_scan_in_progress() {
+        let mut app = App::new(vec![remote("origin", "https://h/o", &[])]);
+        app.step(crate::tui::keys::Command::from(Action::Scan));
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(80, 6, |f| draw(f, &app, &theme, ""));
+        assert!(lines[5].contains("m merges"), "{:?}", lines[5]);
+        assert!(lines[5].contains("t maintainers"), "{:?}", lines[5]);
+        assert!(lines[5].contains("f url file"), "{:?}", lines[5]);
+        app.step(crate::tui::keys::Command::from(Action::Back));
+        app.begin_scan("merges");
+        let lines = screen(80, 6, |f| draw(f, &app, &theme, ""));
+        assert!(lines[5].contains("scanning merges"), "{:?}", lines[5]);
+    }
+
+    #[test]
     fn the_status_line_asks_before_a_removal() {
         let mut app = App::new(vec![remote("netdev/net", "https://h/n", &["merge"])]);
         app.step(crate::tui::keys::Command::from(Action::Delete));
@@ -546,6 +578,7 @@ mod tests {
         assert!(REMOTE_HINTS.contains("n new"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("p promote"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("o browse"), "{REMOTE_HINTS}");
+        assert!(REMOTE_HINTS.contains("A scan"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.contains("/ i search"), "{REMOTE_HINTS}");
         assert!(REMOTE_HINTS.chars().count() <= 80, "{REMOTE_HINTS}");
     }

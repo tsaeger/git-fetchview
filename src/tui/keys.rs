@@ -63,6 +63,8 @@ pub enum Action {
     Promote,
     /// Open a prompt for a URL to browse once, without saving it.
     Open,
+    /// Open the menu of places to collect remotes from.
+    Scan,
     /// Say yes to the question being asked.
     Confirm,
     /// Clear the search / filter.
@@ -99,6 +101,8 @@ pub enum Mode {
     Confirm,
     /// A one-line prompt is open: characters are text, like the search box.
     Prompt,
+    /// A menu is open: a letter picks an item, any other key closes it.
+    Menu,
 }
 
 /// An action with the count typed before it (`5j`, `3G`).
@@ -148,7 +152,10 @@ impl KeyParser {
         if key.kind == KeyEventKind::Release {
             return None;
         }
-        if matches!(mode, Mode::Typing | Mode::Confirm | Mode::Prompt) {
+        if matches!(
+            mode,
+            Mode::Typing | Mode::Confirm | Mode::Prompt | Mode::Menu
+        ) {
             self.reset();
             return map(key, mode).map(Command::from);
         }
@@ -202,7 +209,7 @@ pub fn map(key: KeyEvent, mode: Mode) -> Option<Action> {
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         return match (mode, key.code) {
             (_, KeyCode::Char('c')) => Some(Action::Interrupt),
-            (Mode::Typing | Mode::Prompt, _) => None,
+            (Mode::Typing | Mode::Prompt | Mode::Menu, _) => None,
             (_, KeyCode::Char('d')) => Some(Action::HalfPageDown),
             (_, KeyCode::Char('u')) => Some(Action::HalfPageUp),
             (_, KeyCode::Char('f')) => Some(Action::PageDown),
@@ -215,6 +222,15 @@ pub fn map(key: KeyEvent, mode: Mode) -> Option<Action> {
         Mode::Normal => map_normal(key.code),
         Mode::Sort => map_sort(key.code),
         Mode::Confirm => Some(map_confirm(key.code)),
+        Mode::Menu => Some(map_menu(key.code)),
+    }
+}
+
+/// A letter picks the menu item. Any other key closes the menu.
+fn map_menu(code: KeyCode) -> Action {
+    match code {
+        KeyCode::Char(c) => Action::Char(c),
+        _ => Action::Back,
     }
 }
 
@@ -263,6 +279,7 @@ fn map_normal(code: KeyCode) -> Option<Action> {
         KeyCode::Char('n') => Some(Action::New),
         KeyCode::Char('p') => Some(Action::Promote),
         KeyCode::Char('o') => Some(Action::Open),
+        KeyCode::Char('A') => Some(Action::Scan),
         KeyCode::Char('q') => Some(Action::Quit),
         _ => None,
     })
@@ -325,6 +342,20 @@ mod tests {
             p.feed(key(KeyCode::Char('5')), Mode::Confirm),
             cmd(Action::Back, None)
         );
+    }
+
+    #[test]
+    fn capital_a_opens_the_scan_menu_and_the_menu_takes_letters() {
+        assert_eq!(
+            map(key(KeyCode::Char('A')), Mode::Normal),
+            Some(Action::Scan)
+        );
+        assert_eq!(
+            map(key(KeyCode::Char('m')), Mode::Menu),
+            Some(Action::Char('m'))
+        );
+        assert_eq!(map(key(KeyCode::Esc), Mode::Menu), Some(Action::Back));
+        assert_eq!(map(key(KeyCode::Down), Mode::Menu), Some(Action::Back));
     }
 
     #[test]

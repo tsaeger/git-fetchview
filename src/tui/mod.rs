@@ -16,6 +16,8 @@ use std::time::Duration;
 
 use ratatui::crossterm::event::{self, Event};
 
+use crate::cli::AddSource;
+use crate::commands;
 use crate::error::{Error, Result};
 use crate::git::{self, Cancel, Remote};
 use crate::hide::{Hidden, Rule};
@@ -90,6 +92,34 @@ fn list_refs(
     })
 }
 
+/// What the status line calls a scan.
+fn scan_name(source: &AddSource) -> &'static str {
+    match source {
+        AddSource::Merges { .. } => "merges",
+        AddSource::Maintainers { .. } => "MAINTAINERS",
+        AddSource::Url { .. } => "url file",
+    }
+}
+
+/// Scan a source, let the user choose among the new finds in the multi-select,
+/// and write the choice to the default file. Returns the entries added, which
+/// is none if there was nothing new or the user backed out.
+fn scan_and_choose(
+    terminal: &mut ratatui::DefaultTerminal,
+    theme: &Theme,
+    source: &AddSource,
+) -> Result<Vec<Entry>> {
+    let prepared = commands::prepare(source, commands::default_target()?)?;
+    if prepared.plan.new.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut state = Select::new(commands::picker_rows(&prepared.plan));
+    match run_select(terminal, &mut state, theme)? {
+        Some(chosen) => commands::write_chosen(&prepared, &chosen),
+        None => Ok(Vec::new()),
+    }
+}
+
 /// Lists refs on its own thread, so the screen keeps redrawing and a slow
 /// remote can be given up on.
 struct Worker {
@@ -162,6 +192,12 @@ fn run(
             Flow::Continue => {}
             Flow::Load(load) => worker.start(load),
             Flow::CancelLoad => worker.cancel(),
+            Flow::Scan(source) => {
+                app.begin_scan(scan_name(&source));
+                terminal.draw(|frame| ui::draw(frame, app, theme, ""))?;
+                let result = scan_and_choose(terminal, theme, &source);
+                app.finish_scan(result);
+            }
             Flow::Promote { name, url } => {
                 let result = git::Cmd::remote_add(&name, &url).output().map(|_| ());
                 app.finish_promote(&url, &name, result);

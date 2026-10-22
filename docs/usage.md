@@ -22,6 +22,7 @@ The README covers the first steps. This is the reference.
 | `s`                     | sort mode: `h` `l` pick the column, `r` reverses, `s` `Esc` `Enter` finish |
 | `r`                     | reverse the current order                   |
 | `n`                     | remote list: add a URL. `Enter` adds it to the default remotes file and puts the cursor on its row, `Esc` cancels |
+| `A`                     | remote list: collect remotes without leaving the picker. `m` scans merges (the prompt starts as `HEAD -n 500`; give a range and `-n N` as you like), `t` scans `MAINTAINERS`, `f` reads a file of URLs. What it finds opens in the `add` multi-select, and `Enter` writes your choice to the default file |
 | `o`                     | remote list: type a URL and go straight to its refs without saving it anywhere. A URL that is already listed opens that remote |
 | `p`                     | remote list: make the collected remote a real git remote. The prompt suggests a name (`netdev/net` becomes `netdev-net`) and runs `git remote add`; the collected entry stays in its file |
 | `d`                     | remote list: remove the collected remote under the cursor; `y` confirms, any other key cancels |

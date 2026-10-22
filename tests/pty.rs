@@ -105,6 +105,26 @@ impl World {
         assert!(out.status.success(), "{out:?}");
     }
 
+    /// A merge commit whose subject names a repo, as a pull request leaves.
+    fn merge_from(&self, url: &str) {
+        let (work, home) = (self.work.path(), self.home.path());
+        git(work, home, &["checkout", "-q", "-b", "side"]);
+        git(work, home, &["commit", "-q", "--allow-empty", "-m", "side"]);
+        git(work, home, &["checkout", "-q", "main"]);
+        git(
+            work,
+            home,
+            &[
+                "merge",
+                "-q",
+                "--no-ff",
+                "side",
+                "-m",
+                &format!("Merge tag 'x' of {url}"),
+            ],
+        );
+    }
+
     fn git_output(&self, args: &[&str]) -> String {
         let out = Command::new("git")
             .args(args)
@@ -506,6 +526,62 @@ fn o_browses_a_url_once_and_leaves_nothing_behind() {
     assert!(!s.text().contains("/once"), "{}", s.text());
     assert_eq!(world.collected_file(), "");
     assert_eq!(world.git_output(&["remote"]).trim(), "origin");
+    s.send("q");
+    assert!(s.wait_exit().success());
+}
+
+#[test]
+fn capital_a_collects_from_merges_through_the_multi_select() {
+    let world = World::new();
+    world.merge_from("https://example.org/team/proj.git");
+    let mut s = session!(world);
+    s.wait_for("origin");
+    s.send("A");
+    s.wait_for("collect from:");
+    s.send("m");
+    s.wait_for("merges range: HEAD -n 500");
+    s.send("\r");
+    // The multi-select, with the find in it.
+    s.wait_for("add remotes");
+    s.wait_for("team/proj");
+    s.send("a");
+    s.wait_for("1 checked");
+    s.send("\r");
+    // Back in the remote list, with the row added.
+    s.wait_for("added 1");
+    s.wait_until("the remote list", |t| {
+        t.contains("remotes") && !t.contains("add remotes") && t.contains("team/proj")
+    });
+    assert!(world.collected_file().contains("example.org/team/proj"));
+    s.send("q");
+    assert!(s.wait_exit().success());
+}
+
+#[test]
+fn quitting_the_multi_select_adds_nothing_and_a_bad_range_is_reported() {
+    let world = World::new();
+    world.merge_from("https://example.org/team/proj.git");
+    let mut s = session!(world);
+    s.wait_for("origin");
+    s.send("A");
+    s.send("m");
+    s.wait_for("merges range:");
+    s.send("\r");
+    s.wait_for("add remotes");
+    s.send("q");
+    s.wait_for("added 0");
+    assert_eq!(world.collected_file(), "");
+
+    // git rejects a range that names nothing.
+    s.send("A");
+    s.send("m");
+    for _ in 0.."HEAD -n 500".len() {
+        s.send("\x7f");
+    }
+    s.send("no-such-tag..HEAD");
+    s.send("\r");
+    s.wait_for("no-such-tag");
+    s.wait_until("the remote list", |t| !t.contains("scanning"));
     s.send("q");
     assert!(s.wait_exit().success());
 }

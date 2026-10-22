@@ -3,6 +3,7 @@
 
 //! Picker state machine: remotes, then refs. Pure, so it is easy to test.
 
+use crate::cli::AddSource;
 use crate::error::{Error, Result};
 use crate::git::{Remote, RemoteRef, redact_url};
 use crate::remotes::entry::{Entry, key as repo_key, validate_url};
@@ -36,6 +37,9 @@ pub enum Flow {
     /// Add this URL to the default remotes file, then call
     /// [`App::finish_add`].
     Add(String),
+    /// Look for remotes in this source, let the user choose, and call
+    /// [`App::finish_scan`] with what was added.
+    Scan(AddSource),
     /// Run `git remote add <name> <url>`, then call [`App::finish_promote`].
     Promote {
         /// The name for the new remote.
@@ -100,6 +104,10 @@ enum PromptKind {
     PromoteName(usize),
     /// A URL to browse once, without saving it.
     OpenUrl,
+    /// The revision range, and an optional `-n` limit, to scan for merges.
+    MergesRange,
+    /// A file of URLs, one per line.
+    UrlFile,
 }
 
 impl PromptKind {
@@ -108,8 +116,39 @@ impl PromptKind {
             Self::AddUrl => "add url",
             Self::PromoteName(_) => "remote name",
             Self::OpenUrl => "open url",
+            Self::MergesRange => "merges range",
+            Self::UrlFile => "url file",
         }
     }
+}
+
+/// `[-n N] [range]` from the merges prompt. The range defaults to `HEAD` and
+/// must not look like an option, since it goes to `git log`.
+fn parse_merges(text: &str) -> std::result::Result<(String, Option<usize>), &'static str> {
+    let mut range = None;
+    let mut max = None;
+    let mut words = text.split_whitespace();
+    while let Some(word) = words.next() {
+        let count = if word == "-n" {
+            Some(words.next().ok_or("-n needs a number")?)
+        } else {
+            word.strip_prefix("-n").filter(|rest| !rest.is_empty())
+        };
+        if let Some(count) = count {
+            max = Some(
+                count
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|&n| n > 0)
+                    .ok_or("-n needs a number above 0")?,
+            );
+        } else if word.starts_with('-') {
+            return Err("only -n is understood");
+        } else if range.replace(word).is_some() {
+            return Err("give one range");
+        }
+    }
+    Ok((range.unwrap_or("HEAD").to_owned(), max))
 }
 
 /// One line for the status bar: what git said, not the whole command line.
@@ -183,6 +222,10 @@ pub struct App {
     /// Index of a remote typed at the `o` prompt, kept only while it is open.
     /// It is always the last one, and never in the list.
     temp: Option<usize>,
+    /// The scan menu is open.
+    menu: bool,
+    /// What a scan in progress is looking at, for the status line.
+    scanning: Option<&'static str>,
     next_load: u64,
     spinner: usize,
 }
@@ -210,6 +253,8 @@ impl App {
             confirming: None,
             prompt: None,
             temp: None,
+            menu: false,
+            scanning: None,
             next_load: 0,
             spinner: 0,
         }
@@ -232,6 +277,23 @@ impl App {
     #[must_use]
     pub fn confirming(&self) -> Option<&str> {
         self.confirming.map(|i| self.remotes[i].name.as_str())
+    }
+
+    /// The scan menu's items, if it is open.
+    #[must_use]
+    pub fn menu(&self) -> Option<&'static str> {
+        self.menu.then_some("m merges  t maintainers  f url file")
+    }
+
+    /// What a scan in progress is looking at, if one is.
+    #[must_use]
+    pub fn scanning(&self) -> Option<&'static str> {
+        self.scanning
+    }
+
+    /// Note that a scan of `what` is starting, so it can be drawn first.
+    pub fn begin_scan(&mut self, what: &'static str) {
+        self.scanning = Some(what);
     }
 
     /// The open prompt's label and text, if one is open.
@@ -282,6 +344,8 @@ impl App {
     pub fn mode(&self) -> Mode {
         if self.confirming.is_some() {
             Mode::Confirm
+        } else if self.menu {
+            Mode::Menu
         } else if self.prompt.is_some() {
             Mode::Prompt
         } else if self.typing {
@@ -370,6 +434,9 @@ impl App {
         if self.loading.is_some() {
             return self.step_loading(action);
         }
+        if self.menu {
+            return self.step_menu(action);
+        }
         if self.prompt.is_some() {
             return self.step_prompt(action);
         }
@@ -398,6 +465,7 @@ impl App {
             Action::New => self.open_prompt(PromptKind::AddUrl),
             Action::Promote => self.ask_promote(),
             Action::Open => self.open_prompt(PromptKind::OpenUrl),
+            Action::Scan => self.menu = self.level == Level::Remotes,
             Action::Enter => return self.enter(),
             Action::Quit
             | Action::Interrupt
@@ -427,6 +495,27 @@ impl App {
                 kind,
                 text: String::new(),
             });
+        }
+    }
+
+    /// One letter picks where to collect from, anything else closes the menu.
+    fn step_menu(&mut self, action: Action) -> Flow {
+        self.menu = false;
+        match action {
+            Action::Char('m') => {
+                self.prompt = Some(Prompt {
+                    kind: PromptKind::MergesRange,
+                    text: "HEAD -n 500".to_owned(),
+                });
+                Flow::Continue
+            }
+            Action::Char('t') => Flow::Scan(AddSource::Maintainers { path: None }),
+            Action::Char('f') => {
+                self.open_prompt(PromptKind::UrlFile);
+                Flow::Continue
+            }
+            Action::Interrupt => Flow::Quit,
+            _ => Flow::Continue,
         }
     }
 
@@ -504,8 +593,11 @@ impl App {
         };
         let text = prompt.text.trim().to_owned();
         let kind = prompt.kind;
-        if let PromptKind::PromoteName(index) = kind {
-            return self.submit_name(index, &text);
+        match kind {
+            PromptKind::PromoteName(index) => return self.submit_name(index, &text),
+            PromptKind::MergesRange => return self.submit_merges(&text),
+            PromptKind::UrlFile => return self.submit_file(&text),
+            PromptKind::AddUrl | PromptKind::OpenUrl => {}
         }
         match validate_url(&text) {
             Err(why) => {
@@ -543,6 +635,40 @@ impl App {
         }
     }
 
+    /// Enter in the merges prompt: `[-n N] [range]`, the range defaulting to
+    /// `HEAD`.
+    fn submit_merges(&mut self, text: &str) -> Flow {
+        match parse_merges(text) {
+            Ok((range, max)) => {
+                self.prompt = None;
+                Flow::Scan(AddSource::Merges {
+                    max,
+                    range: Some(range),
+                })
+            }
+            Err(why) => {
+                self.error = Some(why.to_owned());
+                Flow::Continue
+            }
+        }
+    }
+
+    /// Enter in the url-file prompt.
+    fn submit_file(&mut self, text: &str) -> Flow {
+        if text.is_empty() {
+            self.error = Some("enter a file name".to_owned());
+        } else if text == "-" {
+            self.error = Some("stdin is the terminal here; name a file".to_owned());
+        } else {
+            self.prompt = None;
+            return Flow::Scan(AddSource::Url {
+                from_file: Some(text.to_owned()),
+                urls: Vec::new(),
+            });
+        }
+        Flow::Continue
+    }
+
     /// Enter in the name prompt. Git checks the name for real; this only
     /// refuses what would be misread as an option or clash with a remote.
     fn submit_name(&mut self, index: usize, name: &str) -> Flow {
@@ -567,31 +693,58 @@ impl App {
         }
     }
 
+    /// Put a collected remote in its place: real remotes first, then collected
+    /// ones by label. Returns its index.
+    fn insert_collected(&mut self, entry: Entry) -> usize {
+        let remote = Remote {
+            name: entry.display_label(),
+            url: entry.url,
+            tags: entry.tags.into_iter().collect(),
+        };
+        let first_collected = self
+            .remotes
+            .iter()
+            .take_while(|r| r.tags.is_empty())
+            .count();
+        let at = self.remotes[first_collected..]
+            .iter()
+            .position(|r| (&r.name, &r.url) > (&remote.name, &remote.url))
+            .map_or(self.remotes.len(), |p| first_collected + p);
+        self.remote_list
+            .insert(at, remote_cells(&remote), remote_keys(&remote));
+        self.remotes.insert(at, remote);
+        at
+    }
+
     /// Take the result of a [`Flow::Add`]. On success the row appears in its
     /// place and the cursor goes to it.
     pub fn finish_add(&mut self, result: Result<Entry>) {
         match result {
             Ok(entry) => {
-                let remote = Remote {
-                    name: entry.display_label(),
-                    url: entry.url,
-                    tags: entry.tags.into_iter().collect(),
-                };
-                // Real remotes first, then collected ones by label.
-                let first_collected = self
-                    .remotes
-                    .iter()
-                    .take_while(|r| r.tags.is_empty())
-                    .count();
-                let at = self.remotes[first_collected..]
-                    .iter()
-                    .position(|r| (&r.name, &r.url) > (&remote.name, &remote.url))
-                    .map_or(self.remotes.len(), |p| first_collected + p);
-                self.remote_list
-                    .insert(at, remote_cells(&remote), remote_keys(&remote));
-                self.notice = Some(format!("added {}", remote.name));
-                self.remotes.insert(at, remote);
+                let name = entry.display_label();
+                let at = self.insert_collected(entry);
                 self.remote_list.focus(at);
+                self.notice = Some(format!("added {name}"));
+            }
+            Err(e) => self.error = Some(e.to_string()),
+        }
+    }
+
+    /// Take the result of a [`Flow::Scan`]: the entries that were written.
+    /// Their rows appear, except for repos that are already listed.
+    pub fn finish_scan(&mut self, result: Result<Vec<Entry>>) {
+        self.scanning = None;
+        match result {
+            Ok(entries) => {
+                let mut added = 0;
+                for entry in entries {
+                    let wanted = repo_key(&entry.url);
+                    if !self.remotes.iter().any(|r| repo_key(&r.url) == wanted) {
+                        self.insert_collected(entry);
+                        added += 1;
+                    }
+                }
+                self.notice = Some(format!("added {added}"));
             }
             Err(e) => self.error = Some(e.to_string()),
         }
@@ -1565,5 +1718,149 @@ mod tests {
         let load = load_request(open_prompt_with(&mut a, "git@h:net.git"));
         assert_eq!(load.remote.name, "netdev/net");
         assert_eq!(a.remotes.len(), 3);
+    }
+
+    fn scan_menu(a: &mut App, item: char) -> Flow {
+        a.step(Command::from(Action::Scan));
+        a.step(Command::from(Action::Char(item)))
+    }
+
+    #[test]
+    fn capital_a_opens_a_menu_and_anything_else_closes_it() {
+        let mut a = collected_app();
+        a.step(Command::from(Action::Scan));
+        assert_eq!(a.mode(), Mode::Menu);
+        assert!(a.menu().is_some());
+        assert_eq!(a.step(Command::from(Action::Back)), Flow::Continue);
+        assert_eq!(a.mode(), Mode::Normal);
+        let mut b = collected_app();
+        b.step(Command::from(Action::Scan));
+        assert_eq!(b.step(Command::from(Action::Char('z'))), Flow::Continue);
+        assert_eq!(b.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn the_menu_only_opens_in_the_remote_list() {
+        let mut a = collected_app();
+        let mut load = |_: &Remote| Ok(refs_of(&["refs/heads/main"]));
+        a.update(Action::Enter, &mut load);
+        a.step(Command::from(Action::Scan));
+        assert_eq!(a.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn merges_asks_for_a_range_that_defaults_to_head_with_500() {
+        let mut a = collected_app();
+        assert_eq!(scan_menu(&mut a, 'm'), Flow::Continue);
+        assert_eq!(a.prompt(), Some(("merges range", "HEAD -n 500")));
+        let Flow::Scan(AddSource::Merges { range, max }) = a.step(Command::from(Action::Enter))
+        else {
+            panic!("expected a merges scan");
+        };
+        assert_eq!((range.as_deref(), max), (Some("HEAD"), Some(500)));
+    }
+
+    #[test]
+    fn the_merges_range_can_be_edited_and_the_limit_dropped() {
+        let mut a = collected_app();
+        scan_menu(&mut a, 'm');
+        for _ in 0.."HEAD -n 500".len() {
+            a.step(Command::from(Action::Backspace));
+        }
+        typed(&mut a, "v6.11..v6.12");
+        let Flow::Scan(AddSource::Merges { range, max }) = a.step(Command::from(Action::Enter))
+        else {
+            panic!("expected a merges scan");
+        };
+        assert_eq!((range.as_deref(), max), (Some("v6.11..v6.12"), None));
+
+        let mut b = collected_app();
+        scan_menu(&mut b, 'm');
+        for _ in 0.."HEAD -n 500".len() {
+            b.step(Command::from(Action::Backspace));
+        }
+        typed(&mut b, "-n 20 v6.1..v6.2");
+        let Flow::Scan(AddSource::Merges { range, max }) = b.step(Command::from(Action::Enter))
+        else {
+            panic!("expected a merges scan");
+        };
+        assert_eq!((range.as_deref(), max), (Some("v6.1..v6.2"), Some(20)));
+    }
+
+    #[test]
+    fn a_bad_merges_range_says_why_and_keeps_the_prompt() {
+        for bad in ["-n", "-n x", "-n 5 a b", "--output=x", "-x"] {
+            let mut a = collected_app();
+            scan_menu(&mut a, 'm');
+            for _ in 0.."HEAD -n 500".len() {
+                a.step(Command::from(Action::Backspace));
+            }
+            typed(&mut a, bad);
+            assert_eq!(
+                a.step(Command::from(Action::Enter)),
+                Flow::Continue,
+                "{bad:?}"
+            );
+            assert!(a.error().is_some(), "{bad:?}");
+            assert!(a.prompt().is_some(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn t_scans_maintainers_at_once_and_f_asks_for_a_file() {
+        let mut a = collected_app();
+        assert_eq!(
+            scan_menu(&mut a, 't'),
+            Flow::Scan(AddSource::Maintainers { path: None })
+        );
+        let mut b = collected_app();
+        scan_menu(&mut b, 'f');
+        assert_eq!(b.prompt(), Some(("url file", "")));
+        typed(&mut b, "urls.txt");
+        let Flow::Scan(AddSource::Url { from_file, urls }) = b.step(Command::from(Action::Enter))
+        else {
+            panic!("expected a url scan");
+        };
+        assert_eq!(from_file.as_deref(), Some("urls.txt"));
+        assert_eq!(urls, Vec::<String>::new());
+        // Stdin is the terminal here, so `-` makes no sense.
+        let mut c = collected_app();
+        scan_menu(&mut c, 'f');
+        typed(&mut c, "-");
+        assert_eq!(c.step(Command::from(Action::Enter)), Flow::Continue);
+        assert!(c.error().is_some());
+    }
+
+    #[test]
+    fn a_finished_scan_adds_the_rows_and_says_how_many() {
+        let mut a = collected_app();
+        a.finish_scan(Ok(vec![
+            entry_for("https://h/aa/first"),
+            entry_for("https://h/net.git"),
+            entry_for("https://h/zz/last"),
+        ]));
+        let names: Vec<String> = a
+            .list()
+            .visible_cells()
+            .iter()
+            .map(|(_, c)| c[0].clone())
+            .collect();
+        // The repo that was already listed is not added again.
+        assert_eq!(
+            names,
+            ["origin", "aa/first", "netdev/net", "usb/usb", "zz/last"]
+        );
+        assert!(a.notice().is_some_and(|n| n.contains("added 2")));
+    }
+
+    #[test]
+    fn a_failed_scan_shows_the_error_and_a_scan_in_progress_is_named() {
+        let mut a = collected_app();
+        a.begin_scan("merges");
+        assert_eq!(a.scanning(), Some("merges"));
+        a.finish_scan(Err(Error::NoRefs("x".into())));
+        assert_eq!(a.scanning(), None);
+        assert!(a.error().is_some());
+        assert_eq!(a.list().total(), 3);
     }
 }

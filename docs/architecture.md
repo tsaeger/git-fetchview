@@ -112,8 +112,8 @@ flowchart LR
   kills the git process when it sees it.
 
 The mode decides how keys are read: normal, typing in the search box,
-choosing a sort column, answering a yes/no question, or typing into a
-one-line prompt.
+choosing a sort column, answering a yes/no question, picking from a menu,
+or typing into a one-line prompt.
 
 ```mermaid
 stateDiagram-v2
@@ -122,6 +122,9 @@ stateDiagram-v2
     Typing --> Normal: Esc or Enter
     Normal --> Sort: s
     Sort --> Normal: s, Esc or Enter
+    Normal --> Menu: A
+    Menu --> Prompt: m or f
+    Menu --> Normal: t scans at once, other keys close
     Normal --> Prompt: n, o, or p on a collected remote
     Prompt --> Normal: Enter adds, Esc cancels
     Normal --> Confirm: d on a collected remote

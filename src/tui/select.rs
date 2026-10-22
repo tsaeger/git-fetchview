@@ -171,6 +171,7 @@ impl Select {
             | Action::New
             | Action::Promote
             | Action::Open
+            | Action::Scan
             | Action::Confirm
             | Action::Char(_)
             | Action::Backspace
