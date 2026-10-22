@@ -128,6 +128,7 @@ fzf`. All settings are described in [docs/usage.md](docs/usage.md#configuration)
 
 ## More
 
+- [docs/demo/README.md](docs/demo/README.md): a short recording of each feature
 - [docs/usage.md](docs/usage.md): keys, collecting remotes, hiding refs,
   viewers and themes
 - [docs/install.md](docs/install.md): install options

@@ -6,7 +6,7 @@
 #   docs/demo/setup.sh [path/to/linux]     # default: ~/dev/linux
 #   nix shell nixpkgs#ttyd --command vhs docs/demo/demo.tape
 #
-# The GIF is written to docs/demo/demo.gif, which Git LFS tracks.
+# The GIFs are written to docs/demo/, which Git LFS tracks (see docs/demo/README.md).
 set -euo pipefail
 
 kernel=${1:-$HOME/dev/linux}
@@ -25,6 +25,9 @@ git -C "$work/linux" restore --source=HEAD --worktree MAINTAINERS
 cat > "$work/gitconfig" <<'CONF'
 [fetchview]
 	theme = kanagawa
+# macOS's keychain helper hangs on a URL with a password in it.
+[credential]
+	helper =
 CONF
 
 cat > "$work/env" <<ENV
