@@ -17,6 +17,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The runners stay on the *-latest labels. Nix pins the toolchain and every
+# tool from flake.lock, so the host OS matters little, and a pinned image would
+# need a bump when GitHub retires it. If a label move breaks a job, pin that job
+# to the previous image and say why here.
 jobs:
   ci:
     name: ci (${{ matrix.os }})
