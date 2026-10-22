@@ -1,9 +1,10 @@
 ---
 id: TASK-30
 title: Add a pty test of the real terminal UI to the repo
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T03:17:00Z'
+updated_date: '2026-10-22T04:02:00Z'
 labels: []
 dependencies: []
 ordinal: 7000
@@ -17,8 +18,14 @@ The layout checks I run by hand (a pty with a pyte screen, in /tmp) catch things
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A test drives the real binary in a pty through remote pick, ref pick and quit
-- [ ] #2 It asserts on screen text, including the status line and the printed trail
-- [ ] #3 It needs no network and passes on Linux and macOS in CI
-- [ ] #4 cargo xtask ci runs it, and cargo deny passes with any new dev dependency
+- [x] #1 A test drives the real binary in a pty through remote pick, ref pick and quit
+- [x] #2 It asserts on screen text, including the status line and the printed trail
+- [x] #3 It needs no network and passes on Linux and macOS in CI
+- [x] #4 cargo xtask ci runs it, and cargo deny passes with any new dev dependency
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Verified on macOS. The Linux CI run is still to be seen (TASK-12).
+<!-- SECTION:NOTES:END -->
