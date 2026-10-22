@@ -21,7 +21,7 @@ const REMOTE_HINTS: &str =
     "/ i search  h/l col  s sort  n new  o once  A scan  p promote  d remove  q quit";
 const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const SELECT_HINTS: &str =
-    "space toggle  a all  enter write  / i search  c clear  h/l col  s sort  q quit";
+    "space toggle  J/K range  a all  \u{21b5} write  / i search  h/l col  s sort  q quit";
 
 fn base(theme: &Theme) -> Style {
     Style::new().fg(theme.fg).bg(theme.bg)
@@ -324,18 +324,23 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pendin
         search,
     );
 
+    let highlight = select.highlight();
     let rows = select
         .list()
         .visible_cells()
         .into_iter()
-        .map(|(i, cells)| {
-            let (mark, style) = if select.is_have(i) {
+        .enumerate()
+        .map(|(pos, (i, cells))| {
+            let (mark, mut style) = if select.is_have(i) {
                 ("(have)", Style::new().fg(theme.dim))
             } else if select.is_checked(i) {
                 ("[x]", Style::new())
             } else {
                 ("[ ]", Style::new())
             };
+            if highlight.as_ref().is_some_and(|r| r.contains(&pos)) {
+                style = style.bg(theme.selection);
+            }
             TableRow {
                 cells: std::iter::once(mark.to_owned())
                     .chain(cells.iter().cloned())
@@ -362,6 +367,10 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pendin
             select.checked_count(),
             select.selectable_count()
         );
+        let counts = match select.highlight() {
+            Some(range) => format!("{} marked, space toggles  ", range.count()),
+            None => counts,
+        };
         let mut spans: Vec<Span<'_>> = pending_span(pending, theme).into_iter().collect();
         spans.push(Span::styled(counts, Style::new().fg(theme.accent)));
         spans.push(Span::styled(SELECT_HINTS, Style::new().fg(theme.dim)));
@@ -724,5 +733,31 @@ mod tests {
         let theme = Theme::from(ThemeName::default());
         let lines = screen(60, 8, |f| draw_select(f, &s, &theme, ""));
         assert!(lines[0].contains("search: x"), "{:?}", lines[0]);
+    }
+
+    #[test]
+    fn a_highlight_shows_its_size_and_that_space_toggles_it() {
+        let row = |n: &str| Row {
+            cells: vec![n.into()],
+            name: n.into(),
+            url: "u".into(),
+            tags: String::new(),
+            have: false,
+        };
+        let mut s = Select::new(vec![row("a"), row("b"), row("c")]);
+        let theme = Theme::from(ThemeName::default());
+        let bottom = |s: &Select| {
+            screen(100, 8, |f| draw_select(f, s, &theme, ""))
+                .last()
+                .cloned()
+                .unwrap()
+        };
+        assert!(bottom(&s).contains("0 checked of 3"), "{}", bottom(&s));
+        s.update(Action::ExtendDown);
+        assert!(
+            bottom(&s).contains("2 marked, space toggles"),
+            "{}",
+            bottom(&s)
+        );
     }
 }

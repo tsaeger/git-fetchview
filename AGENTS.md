@@ -26,7 +26,7 @@ equivalent plain commands as a cut-and-paste trail. Linux and macOS are the prim
 - **Untrusted URLs:** every URL from a source or a remotes file goes through
   `remotes::entry::validate_url` before it is stored or passed to git.
 - `tui::select` is the multi-select. `Enter` confirms there; everywhere else it
-  drops in.
+  drops in. `Space` toggles the row and advances. `J`/`K` (and Shift-arrows, where the terminal sends the modifier; Terminal.app does not) highlight a range from an anchor without selecting; `Space` then sets the whole range by the anchor row's state, and any other key drops the highlight. Shift-Space is indistinguishable from Space in a terminal, so the highlight is state, not a held key.
 
 ## TUI keybinds (keep consistent across every level)
 

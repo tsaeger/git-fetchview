@@ -18,7 +18,8 @@
 //! | `/` / `i`               | edit the search box                 |
 //! | `c`                     | clear search / filter               |
 //! | `s`                     | sort the column: ascending, descending, none |
-//! | `Space`                 | toggle a row (multi-select)         |
+//! | `Space`                 | toggle a row and advance, or the highlighted rows (multi-select) |
+//! | `J` / `K`, Shift-`↓`/`↑` | move and highlight a range (multi-select; Shift-arrows not in Terminal.app) |
 //! | `a`                     | toggle all visible rows (multi-select) |
 //! | `q` / `Ctrl-c`          | quit, from any level                |
 //!
@@ -80,7 +81,11 @@ pub enum Action {
     ColumnPrev,
     /// Move the column cursor one column right.
     ColumnNext,
-    /// Toggle the row under the cursor (multi-select).
+    /// Move down and highlight from where the highlight started (multi-select).
+    ExtendDown,
+    /// Move up and highlight from where the highlight started (multi-select).
+    ExtendUp,
+    /// Toggle the row under the cursor, or the highlighted rows (multi-select).
     Toggle,
     /// Toggle every visible row (multi-select).
     ToggleAll,
@@ -221,7 +226,7 @@ pub fn map(key: KeyEvent, mode: Mode) -> Option<Action> {
     }
     match mode {
         Mode::Typing | Mode::Prompt => map_typing(key.code),
-        Mode::Normal => map_normal(key.code),
+        Mode::Normal => map_normal(key.code, key.modifiers),
         Mode::Confirm => Some(map_confirm(key.code)),
         Mode::Menu => Some(map_menu(key.code)),
     }
@@ -266,8 +271,18 @@ fn map_motion(code: KeyCode) -> Option<Action> {
     }
 }
 
-fn map_normal(code: KeyCode) -> Option<Action> {
+fn map_normal(code: KeyCode, modifiers: KeyModifiers) -> Option<Action> {
+    // Shift-arrows only arrive as such in some terminals; J and K always do.
+    if modifiers.contains(KeyModifiers::SHIFT) {
+        match code {
+            KeyCode::Down => return Some(Action::ExtendDown),
+            KeyCode::Up => return Some(Action::ExtendUp),
+            _ => {}
+        }
+    }
     map_motion(code).or(match code {
+        KeyCode::Char('J') => Some(Action::ExtendDown),
+        KeyCode::Char('K') => Some(Action::ExtendUp),
         KeyCode::Enter => Some(Action::Enter),
         KeyCode::Esc => Some(Action::Back),
         KeyCode::Char('h') | KeyCode::Left => Some(Action::ColumnPrev),
@@ -591,6 +606,33 @@ mod tests {
         ] {
             assert_eq!(map(key(a), Mode::Normal), map(key(b), Mode::Normal));
         }
+    }
+
+    #[test]
+    fn j_and_k_in_capitals_and_shift_arrows_extend() {
+        let shift = |code| KeyEvent::new(code, KeyModifiers::SHIFT);
+        assert_eq!(
+            map(shift(KeyCode::Char('J')), Mode::Normal),
+            Some(Action::ExtendDown)
+        );
+        assert_eq!(
+            map(shift(KeyCode::Char('K')), Mode::Normal),
+            Some(Action::ExtendUp)
+        );
+        assert_eq!(
+            map(shift(KeyCode::Down), Mode::Normal),
+            Some(Action::ExtendDown)
+        );
+        assert_eq!(
+            map(shift(KeyCode::Up), Mode::Normal),
+            Some(Action::ExtendUp)
+        );
+        // A plain arrow is still a plain move, and typing is unaffected.
+        assert_eq!(map(key(KeyCode::Down), Mode::Normal), Some(Action::Down));
+        assert_eq!(
+            map(shift(KeyCode::Char('J')), Mode::Typing),
+            Some(Action::Char('J'))
+        );
     }
 
     #[test]

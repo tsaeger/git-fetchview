@@ -100,7 +100,8 @@ git fetchview add maintainers            # every T: git line in ./MAINTAINERS
 git fetchview add merges -n 500          # every tree merged into HEAD recently
 ```
 
-`add` shows what it found. `Space` marks a row, `a` marks all visible rows,
+`add` shows what it found. `Space` marks a row and moves to the next, `J` and
+`K` highlight a range that `Space` then marks, `a` marks all visible rows,
 `Enter` writes them. Collected remotes show up in `git fetchview` after your
 real ones.
 

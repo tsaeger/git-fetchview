@@ -25,7 +25,7 @@ header shows an arrow on the sorted column.
 
 ![Collecting the trees merged in a release](merges.gif)
 
-`add merges v6.11..v6.12` finds the trees Linus pulled. `Space` marks a row, `a`
+`add merges v6.11..v6.12` finds the trees Linus pulled. `Space` marks a row and moves on, `J`/`K` highlight a range for `Space`, `a`
 marks every row that matches the search, `Enter` writes them.
 
 ## Adding by hand and managing the list

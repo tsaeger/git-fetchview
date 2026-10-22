@@ -500,6 +500,8 @@ impl App {
             | Action::Backspace
             | Action::Toggle
             | Action::ToggleAll
+            | Action::ExtendDown
+            | Action::ExtendUp
             | Action::Down
             | Action::Up
             | Action::Top

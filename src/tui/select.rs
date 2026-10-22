@@ -4,6 +4,7 @@
 //! Multi-select list used by `add`.
 
 use std::collections::BTreeSet;
+use std::ops::RangeInclusive;
 
 use crate::tui::keys::{Action, Command, Mode};
 use crate::tui::list::{List, SortKeys};
@@ -42,6 +43,8 @@ pub struct Select {
     checked: BTreeSet<usize>,
     typing: bool,
     viewport: usize,
+    /// Visible position where the highlight started; the cursor is its other end.
+    anchor: Option<usize>,
 }
 
 impl Select {
@@ -66,6 +69,7 @@ impl Select {
             checked: BTreeSet::new(),
             typing: false,
             viewport: 10,
+            anchor: None,
         }
     }
 
@@ -89,6 +93,15 @@ impl Select {
     #[must_use]
     pub fn typing(&self) -> bool {
         self.typing
+    }
+
+    /// The highlighted rows as visible positions, if a range is being extended.
+    /// Highlighting only marks rows; `Toggle` is what changes the selection.
+    #[must_use]
+    pub fn highlight(&self) -> Option<RangeInclusive<usize>> {
+        let anchor = self.anchor?;
+        let cursor = self.list.cursor();
+        Some(anchor.min(cursor)..=anchor.max(cursor))
     }
 
     /// Whether row `i` (original index) is checked.
@@ -135,6 +148,14 @@ impl Select {
             self.update_typing(action);
             return SelectFlow::Continue;
         }
+        // Only extending and toggling keep a highlight alive; anything else
+        // (a plain move, Esc, a search) drops it.
+        if !matches!(
+            action,
+            Action::ExtendDown | Action::ExtendUp | Action::Toggle
+        ) {
+            self.anchor = None;
+        }
         if self.list.motion(action, count, self.viewport) {
             return SelectFlow::Continue;
         }
@@ -144,11 +165,16 @@ impl Select {
             Action::Sort => self.list.cycle_sort(),
             Action::ColumnPrev => self.list.move_column(-1),
             Action::ColumnNext => self.list.move_column(1),
-            Action::Toggle => {
-                if let Some(i) = self.list.selected() {
-                    self.toggle(i);
-                }
+            Action::ExtendDown | Action::ExtendUp => {
+                let motion = if action == Action::ExtendDown {
+                    Action::Down
+                } else {
+                    Action::Up
+                };
+                self.anchor.get_or_insert(self.list.cursor());
+                self.list.motion(motion, count, self.viewport);
             }
+            Action::Toggle => self.toggle_here(),
             Action::ToggleAll => self.toggle_all(),
             Action::Enter => return SelectFlow::Done(self.checked.iter().copied().collect()),
             Action::Back
@@ -185,6 +211,37 @@ impl Select {
             Action::Enter | Action::Back => self.typing = false,
             _ => {}
         }
+    }
+
+    /// Space: flip the row under the cursor and move on, or, with a highlight,
+    /// set every highlighted row the opposite of the row it started on.
+    fn toggle_here(&mut self) {
+        let Some(range) = self.highlight() else {
+            if let Some(i) = self.list.selected() {
+                self.toggle(i);
+            }
+            self.list.down();
+            return;
+        };
+        let visible = self.list.visible();
+        // A row you already have is never checked, so an anchor on one selects.
+        let on = visible
+            .get(self.anchor.unwrap_or(0))
+            .is_none_or(|a| !self.checked.contains(a));
+        self.anchor = None;
+        for &i in visible.iter().take(*range.end() + 1).skip(*range.start()) {
+            if self.have[i] {
+                continue;
+            }
+            if on {
+                self.checked.insert(i);
+            } else {
+                self.checked.remove(&i);
+            }
+        }
+        let past = isize::try_from(*range.end() + 1).unwrap_or(isize::MAX);
+        let here = isize::try_from(self.list.cursor()).unwrap_or(0);
+        self.list.move_by(past - here);
     }
 
     fn toggle(&mut self, i: usize) {
@@ -250,8 +307,140 @@ mod tests {
         let mut s = Select::new(rows());
         s.update(Action::Toggle);
         assert!(s.is_checked(0));
+        s.update(Action::Up);
         s.update(Action::Toggle);
         assert!(!s.is_checked(0));
+    }
+
+    fn rows5() -> Vec<Row> {
+        (0..5)
+            .map(|i| Row {
+                cells: vec![format!("r{i}")],
+                tags: String::new(),
+                name: format!("r{i}"),
+                url: String::new(),
+                have: false,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn space_selects_and_advances_and_deselects_and_advances() {
+        let mut s = Select::new(rows5());
+        s.update(Action::Toggle);
+        assert!(s.is_checked(0));
+        assert_eq!(s.list().cursor(), 1);
+        s.update(Action::Up);
+        s.update(Action::Toggle);
+        assert!(!s.is_checked(0));
+        assert_eq!(s.list().cursor(), 1);
+    }
+
+    #[test]
+    fn space_on_the_last_row_stays_there() {
+        let mut s = Select::new(rows5());
+        s.update_with(Command {
+            action: Action::Bottom,
+            count: None,
+        });
+        s.update(Action::Toggle);
+        assert!(s.is_checked(4));
+        assert_eq!(s.list().cursor(), 4);
+    }
+
+    #[test]
+    fn extending_highlights_without_selecting() {
+        let mut s = Select::new(rows5());
+        s.update(Action::Down);
+        s.update(Action::ExtendDown);
+        s.update(Action::ExtendDown);
+        assert_eq!(s.highlight(), Some(1..=3));
+        assert_eq!(s.checked_count(), 0);
+        s.update(Action::ExtendUp);
+        assert_eq!(s.highlight(), Some(1..=2));
+    }
+
+    #[test]
+    fn extending_up_past_the_start_highlights_above_it() {
+        let mut s = Select::new(rows5());
+        s.update(Action::Down);
+        s.update(Action::Down);
+        s.update(Action::ExtendUp);
+        s.update(Action::ExtendUp);
+        assert_eq!(s.highlight(), Some(0..=2));
+    }
+
+    #[test]
+    fn space_selects_the_highlight_when_the_anchor_is_unselected() {
+        let mut s = Select::new(rows5());
+        s.update(Action::ExtendDown);
+        s.update(Action::ExtendDown);
+        s.update(Action::Toggle);
+        assert_eq!(s.highlight(), None);
+        assert_eq!(
+            (0..5).map(|i| s.is_checked(i)).collect::<Vec<_>>(),
+            [true, true, true, false, false]
+        );
+        assert_eq!(s.list().cursor(), 3);
+    }
+
+    #[test]
+    fn space_deselects_the_highlight_when_the_anchor_is_selected() {
+        let mut s = Select::new(rows5());
+        s.update(Action::ToggleAll);
+        s.update(Action::Down);
+        s.update(Action::ExtendDown);
+        s.update(Action::ExtendDown);
+        s.update(Action::Toggle);
+        assert_eq!(
+            (0..5).map(|i| s.is_checked(i)).collect::<Vec<_>>(),
+            [true, false, false, false, true]
+        );
+        assert_eq!(s.list().cursor(), 4);
+    }
+
+    #[test]
+    fn an_upward_highlight_toggles_by_its_anchor_too() {
+        let mut s = Select::new(rows5());
+        s.update(Action::Bottom);
+        s.update(Action::ExtendUp);
+        s.update(Action::ExtendUp);
+        s.update(Action::Toggle);
+        assert_eq!(s.checked_count(), 3);
+        assert!(s.is_checked(2) && s.is_checked(3) && s.is_checked(4));
+        // Nothing below the range, so the cursor stays at the end.
+        assert_eq!(s.list().cursor(), 4);
+    }
+
+    #[test]
+    fn a_plain_move_or_esc_drops_the_highlight() {
+        for drop in [Action::Down, Action::Up, Action::Back, Action::Search] {
+            let mut s = Select::new(rows5());
+            s.update(Action::ExtendDown);
+            s.update(drop);
+            assert_eq!(s.highlight(), None, "{drop:?}");
+            assert_eq!(s.checked_count(), 0);
+        }
+    }
+
+    #[test]
+    fn the_highlight_skips_rows_already_present() {
+        let mut s = Select::new(rows());
+        s.update(Action::ExtendDown);
+        s.update(Action::ExtendDown);
+        s.update(Action::Toggle);
+        assert!(s.is_checked(0) && s.is_checked(2));
+        assert!(!s.is_checked(1));
+    }
+
+    #[test]
+    fn a_count_extends_by_that_many_rows() {
+        let mut s = Select::new(rows5());
+        s.update_with(Command {
+            action: Action::ExtendDown,
+            count: Some(3),
+        });
+        assert_eq!(s.highlight(), Some(0..=3));
     }
 
     #[test]

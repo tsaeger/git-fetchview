@@ -73,7 +73,15 @@ git fetchview remove netdev/net
 ```
 
 `add merges` and `add maintainers` show a picker of what they found: `Space`
-toggles a row, `a` toggles every visible row, `/` filters, `Enter` writes, `q`
+toggles a row and moves to the next (on a marked row it unmarks it and moves on).
+`J` and `K` (or Shift with the arrows) move and highlight the rows from where you
+started; nothing is marked yet. `Space` then toggles the whole highlight by the
+row it started on: if that row was marked they are all unmarked, otherwise all
+marked, and the cursor lands after the range. Any other key, or `Esc`, drops the
+highlight. Shift with the arrows works in iTerm2 and Ghostty but not in
+Terminal.app, which sends them as plain arrows; `J` and `K` work everywhere. A
+terminal cannot tell Shift-Space from Space, so you do not need to hold Shift
+for the `Space`. `a` toggles every visible row, `/` filters, `Enter` writes, `q`
 writes nothing. Rows already collected show as `(have)`. `--all` adds everything
 new without the picker, and `--dry-run` prints what would be written.
 

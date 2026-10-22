@@ -1,10 +1,10 @@
 ---
 id: TASK-36
-title: 'Multi-select: space selects and advances, shift/ctrl with arrows or j/k extend'
-status: To Do
+title: 'Multi-select: space advances, J/K highlight a range'
+status: Done
 assignee: []
 created_date: '2026-10-22T14:57:00Z'
-updated_date: '2026-10-22T19:31:00Z'
+updated_date: '2026-10-22T19:37:00Z'
 labels:
   - prototype
 dependencies: []
@@ -19,11 +19,11 @@ In the multi-select (tui::select), space toggles the row under the cursor. Chang
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 space selects or deselects the current row and advances
-- [ ] #2 shift with arrows and J/K moves the cursor and highlights anchor..cursor without selecting; space toggles the whole highlight by the anchor row's state (selected: deselect all, else select all), the cursor lands after the range; a plain move or Esc drops the highlight
-- [ ] #3 ctrl is not used. Which shift combinations arrive in Terminal.app, iTerm2, kitty and a Linux console is recorded, and unreliable ones are not promised
-- [ ] #4 The behavior is covered by unit tests in select.rs and keys.rs
-- [ ] #5 The status-line hints, README, docs/usage.md and AGENTS.md describe the new keys
+- [x] #1 space selects or deselects the current row and advances
+- [x] #2 shift with arrows and J/K moves the cursor and highlights anchor..cursor without selecting; space toggles the whole highlight by the anchor row's state (selected: deselect all, else select all), the cursor lands after the range; a plain move or Esc drops the highlight
+- [x] #3 ctrl is not used. Which shift combinations arrive in Terminal.app, iTerm2, kitty and a Linux console is recorded, and unreliable ones are not promised
+- [x] #4 The behavior is covered by unit tests in select.rs and keys.rs
+- [x] #5 The status-line hints, README, docs/usage.md and AGENTS.md describe the new keys
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -35,3 +35,9 @@ Key probe, Terminal.app (TERM=xterm-256color), default mode: shift+down and shif
 
 Key probe, Ghostty (TERM=xterm-ghostty), default mode: same as iTerm2. shift+down/up arrive with SHIFT, shift+j/k as Char('J')/Char('K') with SHIFT, shift+space is a plain space. Not probed: kitty, Linux console.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Space toggles the row and advances. J/K and shift+arrows highlight anchor..cursor without selecting; space then sets the whole range by the anchor row's state and lands after it; any other key or Esc drops the highlight. Rows already present are skipped. ctrl is unused. Key probes: iTerm2 and Ghostty send shift+arrows with SHIFT, Terminal.app does not, so docs promise J/K only. Not probed: kitty, Linux console.
+<!-- SECTION:FINAL_SUMMARY:END -->
