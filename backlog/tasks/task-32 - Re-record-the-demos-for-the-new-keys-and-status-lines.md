@@ -4,8 +4,11 @@ title: Re-record the demos for the new keys and status lines
 status: To Do
 assignee: []
 created_date: '2026-10-22T06:02:00Z'
+updated_date: '2026-10-22T14:57:00Z'
 labels: []
-dependencies: []
+dependencies:
+  - TASK-35
+  - TASK-36
 ordinal: 20000
 ---
 

@@ -4,8 +4,11 @@ title: Add a ? help overlay for the picker keys
 status: To Do
 assignee: []
 created_date: '2026-10-22T06:03:00Z'
+updated_date: '2026-10-22T14:57:00Z'
 labels: []
-dependencies: []
+dependencies:
+  - TASK-35
+  - TASK-36
 ordinal: 21000
 ---
 
