@@ -7,7 +7,7 @@ created_date: '2026-10-22T03:05:00Z'
 updated_date: '2026-10-22T03:06:00Z'
 labels: []
 dependencies: []
-ordinal: 22000
+ordinal: 10000
 ---
 
 ## Description
