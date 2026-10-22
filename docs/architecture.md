@@ -111,8 +111,8 @@ flowchart LR
   load is dropped. Cancelling sets a `git::Cancel` flag, and `Cmd::output_until`
   kills the git process when it sees it.
 
-The mode decides how keys are read: normal, typing in the search box, or
-choosing a sort column.
+The mode decides how keys are read: normal, typing in the search box,
+choosing a sort column, or answering a yes/no question.
 
 ```mermaid
 stateDiagram-v2
@@ -121,6 +121,8 @@ stateDiagram-v2
     Typing --> Normal: Esc or Enter
     Normal --> Sort: s
     Sort --> Normal: s, Esc or Enter
+    Normal --> Confirm: d on a collected remote
+    Confirm --> Normal: y removes, any other key cancels
 ```
 
 ## Collected remotes

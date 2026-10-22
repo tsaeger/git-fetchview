@@ -175,6 +175,17 @@ impl List {
         self.labels.len()
     }
 
+    /// Drop row `index` (an original index). The cursor stays on the same
+    /// position, so it lands on the next row, and is pulled back if that was
+    /// the last one.
+    pub fn remove(&mut self, index: usize) {
+        self.labels.remove(index);
+        self.cells.remove(index);
+        self.keys.remove(index);
+        let last = self.visible().len().saturating_sub(1);
+        self.cursor = self.cursor.min(last);
+    }
+
     /// The current filter text.
     #[must_use]
     pub fn filter(&self) -> &str {
@@ -381,6 +392,21 @@ fn matches(label: &str, filter: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn remove_drops_a_row_and_keeps_the_cursor_in_range() {
+        let mut l = List::new(vec!["a".into(), "b".into(), "c".into()]);
+        l.motion(Action::Bottom, None, 10);
+        assert_eq!(l.selected(), Some(2));
+        l.remove(2);
+        assert_eq!(l.total(), 2);
+        assert_eq!(l.selected(), Some(1));
+        l.remove(0);
+        assert_eq!(l.visible_labels(), ["b"]);
+        assert_eq!(l.selected(), Some(0));
+        l.remove(0);
+        assert_eq!(l.selected(), None);
+    }
+
     #[test]
     fn total_counts_rows_the_filter_hides() {
         let mut l = List::new(vec!["a".into(), "b".into()]);

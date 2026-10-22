@@ -15,6 +15,8 @@ use crate::tui::select::Select;
 use crate::tui::theme::Theme;
 
 const HINTS: &str = "j/k move  l/enter open  h/esc back  / i search  c clear  s sort  q quit";
+/// The top level has nowhere to go back to, and offers removing.
+const REMOTE_HINTS: &str = "j/k move  l/enter open  / i search  c clear  s sort  d remove  q quit";
 const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const SORT_HINTS: &str = " h/l column  r reverse  s/esc done";
 const SELECT_HINTS: &str = "space toggle  a all  enter write  / i search  c clear  s sort  q quit";
@@ -270,6 +272,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
             ),
             Span::styled("esc cancel", Style::new().fg(theme.dim)),
         ])
+    } else if let Some(name) = app.confirming() {
+        Line::from(Span::styled(
+            format!("remove {name}? y/n"),
+            Style::new().fg(theme.accent),
+        ))
     } else if let Some(err) = app.error() {
         Line::from(Span::styled(err.to_owned(), Style::new().fg(theme.error)))
     } else if app.typing() {
@@ -294,7 +301,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
                 Style::new().fg(theme.accent),
             ));
         }
-        spans.push(Span::styled(HINTS, Style::new().fg(theme.dim)));
+        let hints = if app.level() == Level::Remotes {
+            REMOTE_HINTS
+        } else {
+            HINTS
+        };
+        spans.push(Span::styled(hints, Style::new().fg(theme.dim)));
         Line::from(spans)
     };
     frame.render_widget(Paragraph::new(line).style(base(theme)), status);
@@ -475,6 +487,26 @@ mod tests {
         app.tick();
         let second = screen(60, 6, |f| draw(f, &app, &theme, ""));
         assert_ne!(first[5], second[5]);
+    }
+
+    #[test]
+    fn the_status_line_asks_before_a_removal() {
+        let mut app = App::new(vec![remote("netdev/net", "https://h/n", &["merge"])]);
+        app.step(crate::tui::keys::Command::from(Action::Delete));
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(60, 6, |f| draw(f, &app, &theme, ""));
+        assert!(
+            lines[5].contains("remove netdev/net? y/n"),
+            "{:?}",
+            lines[5]
+        );
+    }
+
+    #[test]
+    fn the_remote_hints_offer_d_and_fit_80_columns() {
+        assert!(REMOTE_HINTS.contains("d remove"), "{REMOTE_HINTS}");
+        assert!(REMOTE_HINTS.contains("/ i search"), "{REMOTE_HINTS}");
+        assert!(REMOTE_HINTS.chars().count() <= 80, "{REMOTE_HINTS}");
     }
 
     #[test]

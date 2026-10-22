@@ -92,6 +92,23 @@ impl World {
         );
     }
 
+    /// Collect a URL the way `git fetchview add url` does.
+    fn collect(&self, url: &str) {
+        let out = Command::new(env!("CARGO_BIN_EXE_git-fetchview"))
+            .args(["add", "--all", "url", url])
+            .current_dir(self.work.path())
+            .env("HOME", self.home.path())
+            .env("GIT_CONFIG_GLOBAL", self.home.path().join("gitconfig"))
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{out:?}");
+    }
+
+    fn collected_file(&self) -> String {
+        std::fs::read_to_string(self.work.path().join(".git/fetchview.remotes")).unwrap_or_default()
+    }
+
     fn start(&self) -> Option<Session> {
         Session::start(self)
     }
@@ -317,5 +334,35 @@ fn ctrl_c_cancels_a_load_and_then_quits() {
     s.send("\x03");
     s.wait_until("the remote list again", |t| !t.contains("loading"));
     s.send("\x03");
+    assert!(s.wait_exit().success());
+}
+
+#[test]
+fn d_removes_a_collected_remote_after_y_and_refuses_a_real_one() {
+    let world = World::new();
+    world.collect("https://example.org/team/proj.git");
+    assert!(world.collected_file().contains("team/proj"));
+    let mut s = session!(world);
+    s.wait_for("team/proj");
+
+    // A real remote is git's to remove.
+    s.send("d");
+    s.wait_for("git remote remove origin");
+
+    // On the collected row, the question comes first.
+    s.send("j");
+    s.send("d");
+    s.wait_for("remove team/proj? y/n");
+    s.send("n");
+    s.wait_until("the question gone", |t| !t.contains("y/n"));
+    assert!(world.collected_file().contains("team/proj"));
+
+    s.send("d");
+    s.wait_for("y/n");
+    s.send("y");
+    s.wait_for("removed team/proj");
+    s.wait_until("the row gone", |t| !t.contains("example.org"));
+    assert!(!world.collected_file().contains("team/proj"));
+    s.send("q");
     assert!(s.wait_exit().success());
 }

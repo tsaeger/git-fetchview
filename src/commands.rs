@@ -13,7 +13,7 @@ use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::git::{Cmd, redact_url};
 use crate::remotes::entry::{Entry, key, validate_url};
-use crate::remotes::file::{merge, remove as remove_lines, render_line, write_atomic};
+use crate::remotes::file::{merge, render_line, write_atomic};
 use crate::remotes::plan::{Plan, plan};
 use crate::remotes::registry::{self, Scope};
 use crate::remotes::source::maintainers::Maintainers;
@@ -264,12 +264,8 @@ pub fn remove(target: &str) -> Result<()> {
             });
         }
     };
-    for file in &loaded.files {
-        let (text, removed) = remove_lines(&file.text, &k);
-        if removed > 0 {
-            write_atomic(&file.path, &text)?;
-            eprintln!("removed from {}", file.path.display());
-        }
+    for path in registry::remove_entry(&k)? {
+        eprintln!("removed from {}", path.display());
     }
     Ok(())
 }

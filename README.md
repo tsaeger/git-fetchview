@@ -106,6 +106,7 @@ how many it hid, and opening mainline itself shows everything. See
 | `/` or `i`          | edit the search box; `Esc` or `Enter` leaves it  |
 | `c`                 | clear the search                                 |
 | `s` then `h` `l`    | choose the sort column; `r` reverses             |
+| `d`                 | remove a collected remote, after `y`             |
 | `q`                 | quit, from anywhere                              |
 
 The full list, including paging and how sorting works, is in

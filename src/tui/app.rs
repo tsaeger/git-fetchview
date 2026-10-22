@@ -29,6 +29,9 @@ pub enum Flow {
     Load(Load),
     /// Stop the load that was running; the remote list stays up.
     CancelLoad,
+    /// The question was answered yes: remove this collected remote, then call
+    /// [`App::finish_remove`].
+    Remove(Remote),
     /// A remote and ref were chosen.
     Done(Selection),
 }
@@ -99,6 +102,8 @@ pub struct App {
     chosen: Option<usize>,
     /// The load in flight: its id and the remote's index.
     loading: Option<(u64, usize)>,
+    /// The collected remote a remove question is open for.
+    confirming: Option<usize>,
     next_load: u64,
     spinner: usize,
 }
@@ -132,6 +137,7 @@ impl App {
             viewport: 10,
             chosen: None,
             loading: None,
+            confirming: None,
             next_load: 0,
             spinner: 0,
         }
@@ -148,6 +154,12 @@ impl App {
     #[must_use]
     pub fn loading(&self) -> Option<&str> {
         self.loading.map(|(_, i)| self.remotes[i].name.as_str())
+    }
+
+    /// Name of the collected remote a remove question is open for, if any.
+    #[must_use]
+    pub fn confirming(&self) -> Option<&str> {
+        self.confirming.map(|i| self.remotes[i].name.as_str())
     }
 
     /// Which frame of the loading spinner to draw.
@@ -188,7 +200,9 @@ impl App {
     /// Which keymap is in force.
     #[must_use]
     pub fn mode(&self) -> Mode {
-        if self.typing {
+        if self.confirming.is_some() {
+            Mode::Confirm
+        } else if self.typing {
             Mode::Typing
         } else if self.sorting {
             Mode::Sort
@@ -264,6 +278,13 @@ impl App {
         if action == Action::Quit {
             return Flow::Quit;
         }
+        if let Some(index) = self.confirming.take() {
+            return match action {
+                Action::Confirm => Flow::Remove(self.remotes[index].clone()),
+                Action::Interrupt => Flow::Quit,
+                _ => Flow::Continue,
+            };
+        }
         if self.loading.is_some() {
             return self.step_loading(action);
         }
@@ -288,9 +309,11 @@ impl App {
             Action::Sort => self.sorting = true,
             Action::Reverse => self.list_mut().toggle_reverse(),
             Action::Back => self.back(),
+            Action::Delete => self.ask_remove(),
             Action::Enter => return self.enter(),
             Action::Quit
             | Action::Interrupt
+            | Action::Confirm
             | Action::Char(_)
             | Action::Backspace
             | Action::Toggle
@@ -317,6 +340,40 @@ impl App {
             Flow::CancelLoad
         } else {
             Flow::Continue
+        }
+    }
+
+    /// `d`: open the question for a collected remote. A real remote belongs to
+    /// git, so it gets a note instead.
+    fn ask_remove(&mut self) {
+        if self.level != Level::Remotes {
+            return;
+        }
+        let Some(index) = self.list().selected() else {
+            return;
+        };
+        let remote = &self.remotes[index];
+        if remote.tags.is_empty() {
+            self.notice = Some(format!(
+                "{0} is a real remote: git remote remove {0}",
+                remote.name
+            ));
+        } else {
+            self.confirming = Some(index);
+        }
+    }
+
+    /// Take the result of a [`Flow::Remove`]. On success the row goes away.
+    pub fn finish_remove(&mut self, url: &str, result: Result<()>) {
+        match result {
+            Ok(()) => {
+                if let Some(index) = self.remotes.iter().position(|r| r.url == url) {
+                    let gone = self.remotes.remove(index);
+                    self.remote_list.remove(index);
+                    self.notice = Some(format!("removed {}", gone.name));
+                }
+            }
+            Err(e) => self.error = Some(e.to_string()),
         }
     }
 
@@ -841,5 +898,101 @@ mod tests {
         let before = a.spinner();
         a.tick();
         assert_ne!(a.spinner(), before);
+    }
+
+    fn collected_app() -> App {
+        App::new(vec![
+            Remote {
+                name: "origin".into(),
+                url: "https://h/o".into(),
+                tags: Vec::new(),
+            },
+            Remote {
+                name: "netdev/net".into(),
+                url: "https://h/net".into(),
+                tags: vec!["merge".into()],
+            },
+            Remote {
+                name: "usb/usb".into(),
+                url: "https://h/usb".into(),
+                tags: vec!["merge".into()],
+            },
+        ])
+    }
+
+    fn on_row(a: &mut App, n: usize) {
+        for _ in 0..n {
+            a.step(Command::from(Action::Down));
+        }
+    }
+
+    #[test]
+    fn d_on_a_collected_row_asks_before_removing() {
+        let mut a = collected_app();
+        on_row(&mut a, 1);
+        assert_eq!(a.step(Command::from(Action::Delete)), Flow::Continue);
+        assert_eq!(a.confirming(), Some("netdev/net"));
+        assert_eq!(a.mode(), Mode::Confirm);
+    }
+
+    #[test]
+    fn y_asks_the_loop_to_remove_it_and_anything_else_cancels() {
+        let mut a = collected_app();
+        on_row(&mut a, 1);
+        a.step(Command::from(Action::Delete));
+        let Flow::Remove(remote) = a.step(Command::from(Action::Confirm)) else {
+            panic!("expected a removal");
+        };
+        assert_eq!(remote.url, "https://h/net");
+        assert_eq!(a.confirming(), None);
+
+        a.step(Command::from(Action::Delete));
+        assert_eq!(a.step(Command::from(Action::Back)), Flow::Continue);
+        assert_eq!(a.confirming(), None);
+        assert_eq!(a.list().visible().len(), 3);
+    }
+
+    #[test]
+    fn d_on_a_real_remote_only_shows_a_note() {
+        let mut a = collected_app();
+        assert_eq!(a.step(Command::from(Action::Delete)), Flow::Continue);
+        assert_eq!(a.confirming(), None);
+        assert!(
+            a.notice()
+                .is_some_and(|n| n.contains("git remote remove origin"))
+        );
+    }
+
+    #[test]
+    fn d_in_the_refs_list_does_nothing() {
+        let mut a = collected_app();
+        let mut load = |_: &Remote| Ok(refs_of(&["refs/heads/main"]));
+        a.update(Action::Enter, &mut load);
+        assert_eq!(a.level(), Level::Refs);
+        a.step(Command::from(Action::Delete));
+        assert_eq!(a.confirming(), None);
+    }
+
+    #[test]
+    fn a_finished_removal_drops_the_row_and_a_failed_one_keeps_it() {
+        let mut a = collected_app();
+        on_row(&mut a, 1);
+        a.finish_remove("https://h/net", Ok(()));
+        assert_eq!(a.list().visible().len(), 2);
+        assert!(a.notice().is_some_and(|n| n.contains("netdev/net")));
+        let under_cursor = a.list().visible_cells()[a.list().cursor()].1[0].clone();
+        assert_eq!(under_cursor, "usb/usb");
+
+        a.finish_remove("https://h/usb", Err(Error::NotFound("usb/usb".into())));
+        assert_eq!(a.list().visible().len(), 2);
+        assert!(a.error().is_some());
+    }
+
+    #[test]
+    fn ctrl_c_during_the_question_quits() {
+        let mut a = collected_app();
+        on_row(&mut a, 1);
+        a.step(Command::from(Action::Delete));
+        assert_eq!(a.step(Command::from(Action::Interrupt)), Flow::Quit);
     }
 }

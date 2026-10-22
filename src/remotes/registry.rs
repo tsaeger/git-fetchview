@@ -182,6 +182,24 @@ pub fn load_registered() -> Loaded {
     }
 }
 
+/// Remove the repo with this [`key`](super::entry::key) from every registered
+/// file that has it. Returns the files that were rewritten.
+///
+/// # Errors
+/// The registered files cannot be listed, or one cannot be written.
+pub fn remove_entry(key: &str) -> Result<Vec<PathBuf>> {
+    let loaded = load(&files()?);
+    let mut changed = Vec::new();
+    for file in &loaded.files {
+        let (text, removed) = file::remove(&file.text, key);
+        if removed > 0 {
+            file::write_atomic(&file.path, &text)?;
+            changed.push(file.path.clone());
+        }
+    }
+    Ok(changed)
+}
+
 /// Read every file. Problems become warnings, never errors.
 #[must_use]
 pub fn load(paths: &[PathBuf]) -> Loaded {

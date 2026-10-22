@@ -55,6 +55,10 @@ pub enum Action {
     Interrupt,
     /// Start editing the search box.
     Search,
+    /// Ask to remove the collected remote under the cursor.
+    Delete,
+    /// Say yes to the question being asked.
+    Confirm,
     /// Clear the search / filter.
     Clear,
     /// Cycle the sort order.
@@ -85,6 +89,8 @@ pub enum Mode {
     Typing,
     /// Choosing a sort column: `h` and `l` move between columns.
     Sort,
+    /// A yes/no question is open: `y` says yes, any other key says no.
+    Confirm,
 }
 
 /// An action with the count typed before it (`5j`, `3G`).
@@ -134,7 +140,7 @@ impl KeyParser {
         if key.kind == KeyEventKind::Release {
             return None;
         }
-        if mode == Mode::Typing {
+        if matches!(mode, Mode::Typing | Mode::Confirm) {
             self.reset();
             return map(key, mode).map(Command::from);
         }
@@ -200,6 +206,15 @@ pub fn map(key: KeyEvent, mode: Mode) -> Option<Action> {
         Mode::Typing => map_typing(key.code),
         Mode::Normal => map_normal(key.code),
         Mode::Sort => map_sort(key.code),
+        Mode::Confirm => Some(map_confirm(key.code)),
+    }
+}
+
+/// `y` is yes and every other key is no, so a stray key never confirms.
+fn map_confirm(code: KeyCode) -> Action {
+    match code {
+        KeyCode::Char('y' | 'Y') => Action::Confirm,
+        _ => Action::Back,
     }
 }
 
@@ -236,6 +251,7 @@ fn map_normal(code: KeyCode) -> Option<Action> {
         KeyCode::Char('r') => Some(Action::Reverse),
         KeyCode::Char('/' | 'i') => Some(Action::Search),
         KeyCode::Char('c') => Some(Action::Clear),
+        KeyCode::Char('d') => Some(Action::Delete),
         KeyCode::Char('q') => Some(Action::Quit),
         _ => None,
     })
@@ -268,6 +284,36 @@ mod tests {
             last = parser.feed(key(code), Mode::Normal);
         }
         last
+    }
+
+    #[test]
+    fn d_asks_to_remove_and_the_confirm_keymap_is_y_or_anything_else() {
+        assert_eq!(
+            map(key(KeyCode::Char('d')), Mode::Normal),
+            Some(Action::Delete)
+        );
+        assert_eq!(
+            map(key(KeyCode::Char('y')), Mode::Confirm),
+            Some(Action::Confirm)
+        );
+        for code in [
+            KeyCode::Char('n'),
+            KeyCode::Esc,
+            KeyCode::Char('x'),
+            KeyCode::Enter,
+        ] {
+            assert_eq!(
+                map(key(code), Mode::Confirm),
+                Some(Action::Back),
+                "{code:?}"
+            );
+        }
+        // No counts or prefixes while a question is open.
+        let mut p = KeyParser::default();
+        assert_eq!(
+            p.feed(key(KeyCode::Char('5')), Mode::Confirm),
+            cmd(Action::Back, None)
+        );
     }
 
     #[test]
