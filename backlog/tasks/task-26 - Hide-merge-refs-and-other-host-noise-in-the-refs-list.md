@@ -1,9 +1,10 @@
 ---
 id: TASK-26
 title: Hide merge refs and other host noise in the refs list
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T03:16:00Z'
+updated_date: '2026-10-22T05:15:00Z'
 labels: []
 dependencies: []
 ordinal: 14000
@@ -17,10 +18,10 @@ A big GitHub repo lists refs/pull/N/head and refs/pull/N/merge for every PR, whi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 refs/pull/*/merge and refs/merge-requests/*/merge are hidden by default and counted in the status line
-- [ ] #2 GitLab's pipelines, environments and keep-around refs are hidden by default
-- [ ] #3 fetchview.hideRefs replaces the default, and an empty value turns it off, like hideRefsFrom
-- [ ] #4 A key toggles showing the hidden refs without leaving the list
-- [ ] #5 Checked against a real GitHub repo and a real GitLab repo; tests cover the patterns
-- [ ] #6 README and docs/usage.md are updated
+- [x] #1 refs/pull/*/merge and refs/merge-requests/*/merge are hidden by default and counted in the status line
+- [x] #2 GitLab's pipelines, environments and keep-around refs are hidden by default
+- [x] #3 fetchview.hideRefs replaces the default, and an empty value turns it off, like hideRefsFrom
+- [x] #4 A key toggles showing the hidden refs without leaving the list
+- [x] #5 Checked against a real GitHub repo and a real GitLab repo; tests cover the patterns
+- [x] #6 README and docs/usage.md are updated
 <!-- AC:END -->
