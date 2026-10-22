@@ -14,9 +14,9 @@ use crate::tui::list::{List, SortOrder};
 use crate::tui::select::Select;
 use crate::tui::theme::Theme;
 
-const HINTS: &str = "j/k move  l/enter open  h/esc back  / search  c clear  s sort  q quit";
+const HINTS: &str = "j/k move  l/enter open  h/esc back  / i search  c clear  s sort  q quit";
 const SORT_HINTS: &str = " h/l column  r reverse  s/esc done";
-const SELECT_HINTS: &str = "space toggle  a all  enter write  / search  c clear  s sort  q quit";
+const SELECT_HINTS: &str = "space toggle  a all  enter write  / i search  c clear  s sort  q quit";
 
 fn base(theme: &Theme) -> Style {
     Style::new().fg(theme.fg).bg(theme.bg)
@@ -522,6 +522,14 @@ mod tests {
             app.update(Action::Back, &mut no_refs);
         }
         app
+    }
+
+    #[test]
+    fn the_key_hints_name_both_search_keys_and_fit_80_columns() {
+        for hints in [HINTS, SELECT_HINTS] {
+            assert!(hints.contains("/ i search"), "{hints}");
+            assert!(hints.chars().count() <= 80, "{hints}");
+        }
     }
 
     #[test]
