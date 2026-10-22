@@ -56,6 +56,7 @@ equivalent plain commands as a cut-and-paste trail. Linux and macOS are the prim
 - Tasks live in `backlog/` and are committed. Change them with the `backlog`
   CLI. `auto_commit` is off, so task changes are committed under the normal
   commit rules below.
+- Commit task-only changes as `chore(backlog): ...`. `cliff.toml` leaves them out of the changelog, as it does `chore: regenerate the changelog`.
 - `backlog/` is exempt from the SPDX header check: task files start with YAML
   front matter, which must stay on line 1.
 

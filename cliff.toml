@@ -53,5 +53,10 @@ commit_parsers = [
   { message = "^(build|ci)", group = "Build" },
   { message = "^revert", group = "Reverted" },
   { message = "^chore\\(release\\)", skip = true },
+  # Task tracking is project bookkeeping, not a change to the tool.
+  { message = "^chore\\(backlog\\)", skip = true },
+  # Early task commits had no backlog scope, and regenerating the changelog
+  # should not add a line to it.
+  { message = "^chore: (track tasks with backlog|add the first backlog|close TASK-|regenerate the changelog)", skip = true },
   { message = "^(chore|style)", group = "Miscellaneous" },
 ]
