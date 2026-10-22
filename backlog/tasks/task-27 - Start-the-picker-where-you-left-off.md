@@ -1,9 +1,10 @@
 ---
 id: TASK-27
 title: Start the picker where you left off
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T03:16:00Z'
+updated_date: '2026-10-22T06:01:00Z'
 labels: []
 dependencies: []
 ordinal: 18000
@@ -17,8 +18,8 @@ Remember the last remote used and put the cursor on it the next time, and, when 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The remote list opens with the cursor on the last-used remote
-- [ ] #2 The refs list opens on the last-used ref when it still exists
-- [ ] #3 A missing remote or ref falls back to the top with no error
-- [ ] #4 A setting turns it off; tests cover remembered, missing and disabled; docs updated
+- [x] #1 The remote list opens with the cursor on the last-used remote
+- [x] #2 The refs list opens on the last-used ref when it still exists
+- [x] #3 A missing remote or ref falls back to the top with no error
+- [x] #4 A setting turns it off; tests cover remembered, missing and disabled; docs updated
 <!-- AC:END -->
