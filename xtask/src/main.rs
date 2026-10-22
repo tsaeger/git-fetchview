@@ -64,6 +64,18 @@ enum Task {
         #[arg(long)]
         require: bool,
     },
+    /// Test coverage with cargo-llvm-cov: a summary, or --html / --lcov reports.
+    Coverage {
+        /// Write an HTML report under target/llvm-cov/html.
+        #[arg(long)]
+        html: bool,
+        /// Write target/llvm-cov/lcov.info, for tools that read lcov.
+        #[arg(long)]
+        lcov: bool,
+        /// Fail if the tool is not installed, instead of skipping.
+        #[arg(long)]
+        require: bool,
+    },
     /// Check SPDX headers on all source files (or add them with --fix).
     Headers {
         /// Insert missing headers instead of failing.
@@ -158,6 +170,11 @@ fn run(task: Task) -> Result<()> {
             }
             Ok(())
         }
+        Task::Coverage {
+            html,
+            lcov,
+            require,
+        } => coverage(html, lcov, require),
         Task::Docs { require } => docs(require),
         Task::Headers { fix } => headers::run(fix),
         Task::Changelog { check, tag } => changelog(check, tag.as_deref()),
@@ -169,6 +186,63 @@ fn run(task: Task) -> Result<()> {
             cargo(&["publish", "--dry-run", "--package", "git-fetchview"])
         }
     }
+}
+
+/// What the coverage figures leave out: the project's own tooling, the fuzz
+/// crate, and the two lines of `main` that only call into the library.
+const COVERAGE_IGNORE: &str = r"(^|/)(xtask|fuzz)/|src/main\.rs|src/bin/";
+
+/// Test coverage with `cargo llvm-cov`. Like the docs checks it is optional on
+/// a laptop, and required when `CI` is set.
+fn coverage(html: bool, lcov: bool, require: bool) -> Result<()> {
+    let found = Command::new("cargo")
+        .args(["llvm-cov", "--version"])
+        .output()
+        .is_ok_and(|out| out.status.success());
+    if !found {
+        if require || std::env::var_os("CI").is_some() {
+            bail!(
+                "`cargo llvm-cov` is not installed (nix develop, or cargo install --locked cargo-llvm-cov)"
+            );
+        }
+        eprintln!("xtask: skipping coverage, cargo-llvm-cov is not installed (nix develop has it)");
+        return Ok(());
+    }
+    let base = [
+        "llvm-cov",
+        "--workspace",
+        "--ignore-filename-regex",
+        COVERAGE_IGNORE,
+    ];
+    // One run of the tests, then each report from its data.
+    cargo(&[&base[..], &["--no-report"]].concat())?;
+    if html {
+        cargo(&[
+            "llvm-cov",
+            "report",
+            "--ignore-filename-regex",
+            COVERAGE_IGNORE,
+            "--html",
+        ])?;
+    }
+    if lcov {
+        std::fs::create_dir_all("target/llvm-cov")?;
+        cargo(&[
+            "llvm-cov",
+            "report",
+            "--ignore-filename-regex",
+            COVERAGE_IGNORE,
+            "--lcov",
+            "--output-path",
+            "target/llvm-cov/lcov.info",
+        ])?;
+    }
+    cargo(&[
+        "llvm-cov",
+        "report",
+        "--ignore-filename-regex",
+        COVERAGE_IGNORE,
+    ])
 }
 
 /// Every fuzz target, by file name, in order.

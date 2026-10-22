@@ -28,6 +28,8 @@
             (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
             pkgs.cargo-deny
             pkgs.cargo-audit
+            # Its own test suite fails in some sandboxes, and we only use the binary.
+            (pkgs.cargo-llvm-cov.overrideAttrs { doCheck = false; })
             pkgs.git-cliff
             pkgs.git
             pkgs.nodejs # for backlog.md: `npm ci`, then `npx backlog`

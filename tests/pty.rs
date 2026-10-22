@@ -176,7 +176,7 @@ impl Session {
         let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_git-fetchview"));
         cmd.env_clear();
         cmd.cwd(world.work.path());
-        for key in ["PATH", "TMPDIR"] {
+        for key in ["PATH", "TMPDIR", "LLVM_PROFILE_FILE"] {
             if let Some(value) = std::env::var_os(key) {
                 cmd.env(key, value);
             }
