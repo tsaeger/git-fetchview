@@ -1,10 +1,10 @@
 ---
 id: TASK-20
 title: 'TUI: add a URL from the picker'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T02:59:00Z'
-updated_date: '2026-10-22T03:01:00Z'
+updated_date: '2026-10-22T04:57:00Z'
 labels: []
 dependencies: []
 ordinal: 9000
@@ -18,11 +18,11 @@ Press n (new) in the remote picker to open a one-line prompt styled like the sea
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Invalid URLs show the rejection reason and are not written
-- [ ] #2 An existing URL is not duplicated and the cursor goes to the existing row
-- [ ] #3 Tests cover the prompt state machine and the render
-- [ ] #4 Keys, README and docs/usage.md are updated
-- [ ] #5 n opens the prompt; Enter adds, Esc cancels
+- [x] #1 Invalid URLs show the rejection reason and are not written
+- [x] #2 An existing URL is not duplicated and the cursor goes to the existing row
+- [x] #3 Tests cover the prompt state machine and the render
+- [x] #4 Keys, README and docs/usage.md are updated
+- [x] #5 n opens the prompt; Enter adds, Esc cancels
 <!-- AC:END -->
 
 ## Implementation Notes
