@@ -48,11 +48,14 @@ pub fn pick(
     theme: ThemeName,
     notice: Option<String>,
     hide: &HideRefs,
+    start: Option<String>,
 ) -> Result<Option<Selection>> {
     let theme = Theme::from(theme);
     let mut app = App::new(remotes).with_notice(notice);
+    // A URL from the command line opens straight to its refs.
+    let first = start.map(|url| app.open_once(url));
     let mut terminal = ratatui::init();
-    let result = run(&mut terminal, &mut app, &theme, hide);
+    let result = run(&mut terminal, &mut app, &theme, hide, first);
     ratatui::restore();
     result
 }
@@ -171,8 +174,12 @@ fn run(
     app: &mut App,
     theme: &Theme,
     hide: &HideRefs,
+    first: Option<Flow>,
 ) -> Result<Option<Selection>> {
     let mut worker = Worker::spawn(hide.clone());
+    if let Some(Flow::Load(load)) = first {
+        worker.start(load);
+    }
     let mut parser = KeyParser::default();
     loop {
         while let Ok((id, result)) = worker.answers.try_recv() {

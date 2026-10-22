@@ -60,21 +60,23 @@ git config.
 
 ### Look at a pull request
 
-GitHub, Gitea and similar hosts advertise pull requests as refs, so they show
-up in the ref list. Inside any repository:
+GitHub, Gitea and GitLab advertise pull and merge requests as refs. Inside any
+repository, give the URL and the number:
 
 ```sh
-git fetchview add url https://github.com/BurntSushi/ripgrep
-git fetchview
+git fetchview https://github.com/BurntSushi/ripgrep 998
 ```
 
-Pick `BurntSushi/ripgrep`, press `/`, type `pull/998/head` and press `Enter`
-twice (once to leave the search box, once to pick the ref). You are in tig on
-that PR's commits. Your checkout is unchanged. If the repository is already one of your remotes, skip the `add`.
-You can also press `n` in the picker and type the URL to keep it, or `o` to
-browse it once and save nothing.
-Other hosts use other names (GitLab has `refs/merge-requests/N/head`, Gerrit
-`refs/changes/...`), and the picker lists whatever the remote advertises.
+That lists the repository's refs, finds `refs/pull/998/head` (or
+`refs/merge-requests/998/head` on GitLab), fetches it and opens tig on that
+PR's commits. `#998` works too. Your checkout is unchanged, and nothing is added
+to your remotes. If the repository is already one of your remotes, use its name
+instead of the URL.
+
+Without the number, `git fetchview <url>` opens that repository's refs in the
+picker, and in the picker `o` does the same for a URL you type, while `n` keeps
+the URL in your collected remotes. A ref can also be a branch, a tag or a full
+ref name: `git fetchview origin v6.12`.
 
 ### Browse a tree you have no remote for
 

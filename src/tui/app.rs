@@ -634,17 +634,7 @@ impl App {
                         self.remote_list.focus(i);
                         self.begin_load(i)
                     }
-                    (PromptKind::OpenUrl, None) => {
-                        // Held only while it is open, and never in the list.
-                        let at = self.remotes.len();
-                        self.remotes.push(Remote {
-                            name: url.clone(),
-                            url,
-                            tags: Vec::new(),
-                        });
-                        self.temp = Some(at);
-                        self.begin_load(at)
-                    }
+                    (PromptKind::OpenUrl, None) => self.open_once(url),
                     (_, Some(i)) => {
                         self.remote_list.focus(i);
                         self.notice = Some(format!("already listed as {}", self.remotes[i].name));
@@ -735,6 +725,19 @@ impl App {
             .insert(at, remote_cells(&remote), remote_keys(&remote));
         self.remotes.insert(at, remote);
         at
+    }
+
+    /// List the refs of a URL that is not in the list: it is held as the last
+    /// remote while its refs are open, and never shown in the list.
+    pub fn open_once(&mut self, url: String) -> Flow {
+        let at = self.remotes.len();
+        self.remotes.push(Remote {
+            name: url.clone(),
+            url,
+            tags: Vec::new(),
+        });
+        self.temp = Some(at);
+        self.begin_load(at)
     }
 
     /// Take the result of a [`Flow::Add`]. On success the row appears in its

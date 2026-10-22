@@ -15,15 +15,33 @@ use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::git::{self, Cmd};
 use crate::remotes::{self, registry};
+use crate::resolve;
 use crate::tui::{self, theme::ThemeName};
 
 /// Pick a remote and ref, fetch it, and open it in a viewer (tig by default).
 ///
+/// Give a URL, or the name of a remote, to go straight to its refs. Give a ref
+/// as well to skip the picker: a full name, a branch or tag, or a pull request
+/// number (`7` or `#7`).
+///
 /// Settings come from `git config` (system, global, then local):
 /// `fetchview.theme`, `fetchview.viewer`. Flags override config.
 #[derive(Debug, Parser)]
-#[command(name = "git-fetchview", version, about)]
+#[command(
+    name = "git-fetchview",
+    version,
+    about,
+    args_conflicts_with_subcommands = true
+)]
 pub struct Cli {
+    /// A repository URL or the name of a remote; opens its refs.
+    #[arg(value_name = "URL")]
+    pub url: Option<String>,
+
+    /// With a URL: the ref to fetch, without the picker.
+    #[arg(value_name = "REF", requires = "url")]
+    pub refname: Option<String>,
+
     /// Colour theme (overrides `fetchview.theme`).
     #[arg(long, value_enum)]
     pub theme: Option<ThemeName>,
@@ -141,7 +159,7 @@ fn run(cli: &Cli) -> Result<()> {
         Some(Command::Add(args)) => commands::add(args),
         Some(Command::List) => commands::list(),
         Some(Command::Remove { target }) => commands::remove(target),
-        None => pick_and_view(cli.theme, cli.viewer.as_deref(), cli.refresh),
+        None => pick_and_view(cli),
     }
 }
 
@@ -154,36 +172,81 @@ fn notice(warnings: &[String]) -> Option<String> {
     }
 }
 
-fn pick_and_view(
-    theme_flag: Option<ThemeName>,
-    viewer_flag: Option<&str>,
-    refresh: bool,
-) -> Result<()> {
-    let config = Config::load(theme_flag, viewer_flag)?;
+/// A remote's name or a URL, as the URL to use. Names win, so `git fv origin`
+/// works; anything else must be a URL we are willing to fetch from.
+fn target_url(arg: &str) -> Result<String> {
+    if let Some(remote) = git::configured_remotes()?
+        .into_iter()
+        .find(|r| r.name == arg)
+    {
+        return Ok(remote.url);
+    }
+    remotes::entry::validate_url(arg).map_err(|why| Error::BadFlag {
+        flag: "<URL>",
+        value: arg.to_owned(),
+        reason: why.to_string(),
+    })
+}
+
+/// The ref a request names, checked against what the remote advertises.
+fn choose_ref(url: &str, query: &str) -> Result<String> {
+    let refs = git::remote_refs(url, &git::Cancel::default())?;
+    resolve::resolve_ref(&refs, query).map_err(|why| match why {
+        resolve::Unresolved::NoMatch => Error::NoSuchRef {
+            remote: git::redact_url(url),
+            query: query.to_owned(),
+        },
+        resolve::Unresolved::Ambiguous(names) => Error::AmbiguousRef {
+            query: query.to_owned(),
+            candidates: names.join("\n"),
+        },
+    })
+}
+
+fn pick_and_view(cli: &Cli) -> Result<()> {
+    let config = Config::load(cli.theme, cli.viewer.as_deref())?;
+    // Given a ref there is nothing to pick.
+    if let (Some(url), Some(query)) = (&cli.url, &cli.refname) {
+        let url = target_url(url)?;
+        let refname = choose_ref(&url, query)?;
+        return fetch_and_view(&config, &url, &refname);
+    }
+    let start = cli.url.as_deref().map(target_url).transpose()?;
     let loaded = registry::load_registered();
     let remotes = remotes::picker_remotes(git::configured_remotes()?, &loaded.merged());
-    if remotes.is_empty() {
+    if remotes.is_empty() && start.is_none() {
         return Err(Error::NoRemotes);
     }
     let hide = tui::HideRefs {
-        rules: config.hide,
-        refresh,
-        patterns: config.hide_refs,
+        rules: config.hide.clone(),
+        refresh: cli.refresh,
+        patterns: config.hide_refs.clone(),
     };
-    let Some(selection) = tui::pick(remotes, config.theme, notice(&loaded.warnings), &hide)? else {
+    let Some(selection) = tui::pick(
+        remotes,
+        config.theme,
+        notice(&loaded.warnings),
+        &hide,
+        start,
+    )?
+    else {
         return Ok(());
     };
+    fetch_and_view(&config, &selection.url, &selection.refname)
+}
 
+/// Print the trail, fetch the ref and open the viewer.
+fn fetch_and_view(config: &Config, url: &str, refname: &str) -> Result<()> {
     // Use the expanded URL rather than the remote name, so the trail works
     // for anyone, not only in a clone that happens to have this remote.
-    let fetch = Cmd::fetch(&selection.url, &selection.refname);
+    let fetch = Cmd::fetch(url, refname);
     let viewer = Cmd::shell(&config.viewer);
 
     // The trail: paste these to do the same thing without git-fetchview.
     // It is shared with others, so embedded passwords are removed.
-    let shared_url = git::redact_url(&selection.url);
+    let shared_url = git::redact_url(url);
     eprintln!("{}", Cmd::ls_remote(&shared_url));
-    eprintln!("{}", Cmd::fetch(&shared_url, &selection.refname));
+    eprintln!("{}", Cmd::fetch(&shared_url, refname));
     eprintln!("{viewer}");
 
     fetch.status()?;

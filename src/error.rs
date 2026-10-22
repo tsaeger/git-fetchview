@@ -63,6 +63,24 @@ pub enum Error {
     #[error("remote `{0}` has no refs")]
     NoRefs(String),
 
+    /// No ref of the remote matches what was asked for.
+    #[error("`{remote}` has no ref matching `{query}`")]
+    NoSuchRef {
+        /// The remote, as it was named.
+        remote: String,
+        /// What was typed.
+        query: String,
+    },
+
+    /// More than one ref matches what was asked for.
+    #[error("`{query}` matches more than one ref:\n{candidates}")]
+    AmbiguousRef {
+        /// What was typed.
+        query: String,
+        /// One ref per line.
+        candidates: String,
+    },
+
     /// A command-line flag value could not be understood.
     #[error("invalid value for {flag}: `{value}`: {reason}")]
     BadFlag {

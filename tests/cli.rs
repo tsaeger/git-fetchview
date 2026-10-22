@@ -452,3 +452,101 @@ fn the_same_kernel_tree_with_an_empty_port_is_listed_once() {
     assert_eq!(file.lines().count(), 1, "{file}");
     assert!(file.starts_with("git://git.kernel.org/pub/scm/fs/xfs/xfs-linux"));
 }
+
+/// A bare repository for `origin`, holding `main`, a tag, a branch and a tag of
+/// one name, and the refs a host makes for a pull request and a merge request.
+fn origin(repo: &Repo) -> TempDir {
+    let bare = tempfile::tempdir().unwrap();
+    let path = bare.path().to_str().unwrap().to_owned();
+    repo.git_in(bare.path(), &["init", "-q", "--bare", "-b", "main"]);
+    repo.git(&["remote", "add", "origin", &path]);
+    repo.git(&["branch", "dup"]);
+    repo.git(&["tag", "v1.0"]);
+    repo.git(&["tag", "dup"]);
+    repo.git(&[
+        "push",
+        "-q",
+        "origin",
+        "refs/heads/main",
+        "refs/heads/dup",
+        "refs/tags/dup",
+        "refs/tags/v1.0",
+    ]);
+    for name in ["refs/pull/7/head", "refs/merge-requests/9/head"] {
+        repo.git_in(bare.path(), &["update-ref", name, "refs/heads/main"]);
+    }
+    repo.git(&["config", "--global", "fetchview.viewer", "echo viewing {}"]);
+    repo.git(&["config", "--global", "--add", "fetchview.hideRefsFrom", ""]);
+    bare
+}
+
+#[test]
+fn a_remote_and_a_ref_fetch_and_view_without_the_picker() {
+    let repo = Repo::new();
+    let bare = origin(&repo);
+    let out = repo.fv(&["origin", "main"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let trail = stderr(&out);
+    assert!(
+        trail.contains(&format!(
+            "git fetch {} refs/heads/main",
+            bare.path().display()
+        )),
+        "{trail}"
+    );
+    assert!(trail.contains("echo viewing FETCH_HEAD"), "{trail}");
+    assert!(
+        stdout(&out).contains("viewing FETCH_HEAD"),
+        "{}",
+        stdout(&out)
+    );
+}
+
+#[test]
+fn short_names_and_pull_request_numbers_resolve_against_the_remote() {
+    let repo = Repo::new();
+    let _bare = origin(&repo);
+    for (asked, wanted) in [
+        ("v1.0", "refs/tags/v1.0"),
+        ("refs/tags/v1.0", "refs/tags/v1.0"),
+        ("7", "refs/pull/7/head"),
+        ("#7", "refs/pull/7/head"),
+        ("9", "refs/merge-requests/9/head"),
+    ] {
+        let out = repo.fv(&["origin", asked]);
+        assert!(out.status.success(), "{asked}: {}", stderr(&out));
+        assert!(stderr(&out).contains(wanted), "{asked}: {}", stderr(&out));
+    }
+}
+
+#[test]
+fn an_unknown_or_ambiguous_ref_is_an_error_that_says_so() {
+    let repo = Repo::new();
+    let _bare = origin(&repo);
+    let none = repo.fv(&["origin", "nope"]);
+    assert!(!none.status.success());
+    assert!(
+        stderr(&none).contains("no ref matching `nope`"),
+        "{}",
+        stderr(&none)
+    );
+    let dup = repo.fv(&["origin", "dup"]);
+    assert!(!dup.status.success());
+    let message = stderr(&dup);
+    assert!(message.contains("more than one ref"), "{message}");
+    assert!(
+        message.contains("refs/heads/dup") && message.contains("refs/tags/dup"),
+        "{message}"
+    );
+    assert!(!stdout(&dup).contains("viewing"));
+}
+
+#[test]
+fn a_url_that_is_not_allowed_is_refused_before_anything_runs() {
+    let repo = Repo::new();
+    let _bare = origin(&repo);
+    let out = repo.fv(&["ext::sh -c id", "main"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("<URL>"), "{}", stderr(&out));
+    assert!(!stdout(&out).contains("viewing"));
+}

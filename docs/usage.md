@@ -34,6 +34,28 @@ return to the remote list. A slow or stalled remote never freezes the screen.
 
 Keys typed but not finished (`5`, `g`) show at the left of the status line, and `Esc` drops them. The search box is always on the top line and shows how many rows match. While you edit it, characters are text (so `q` types a `q`) and the list filters as you type. `Esc` or `Enter` leaves the box and the filter stays; `c` clears it. In sort mode the status line shows the columns (`default`, `label`, `url`, `tags`; refs have `default` and `label`) with the active one in brackets, and the list re-sorts as you move. Labels sort naturally, so `v6.9` comes before `v6.10`, and `r` after `s` puts the newest tags first. Sorting keeps real remotes above collected ones, and in `add` keeps rows you already have at the bottom. Moving the sort column keeps the cursor on the same row, and `r` puts it at the top of the list.
 
+## Going straight to a ref
+
+```sh
+git fetchview <url-or-remote>          # open that repository's refs
+git fetchview <url-or-remote> <ref>    # fetch it and open the viewer, no picker
+```
+
+The first argument is a URL or the name of a remote. The same checks apply as
+for collected URLs: only `https`, `http`, `git`, `ssh` and scp-style URLs, and
+a password in the URL is dropped. The ref is matched against what the remote
+advertises, so what you type never reaches git as an option:
+
+| you type | it means |
+|----------|----------|
+| `refs/tags/v6.12` | that ref, as advertised |
+| `v6.12` | the branch or tag of that name (`refs/heads/v6.12`, `refs/tags/v6.12`) |
+| `7` or `#7` | pull request 7: `refs/pull/7/head`, or `refs/merge-requests/7/head` |
+| `pull/7/merge` | anything under `refs/` that ends the same way |
+
+No match, or more than one (a branch and a tag of one name), is an error that
+says so and lists the candidates. The trail is printed as usual.
+
 ## Collecting remotes
 
 A kernel tree has far more interesting repos than any clone has remotes.

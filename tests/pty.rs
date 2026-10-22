@@ -151,7 +151,11 @@ impl World {
     }
 
     fn start(&self) -> Option<Session> {
-        Session::start(self)
+        Session::start(self, &[])
+    }
+
+    fn start_with(&self, args: &[&str]) -> Option<Session> {
+        Session::start(self, args)
     }
 }
 
@@ -164,7 +168,7 @@ struct Session {
 
 impl Session {
     /// `None` where there is no pty to be had, so the test can skip.
-    fn start(world: &World) -> Option<Self> {
+    fn start(world: &World, args: &[&str]) -> Option<Self> {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: ROWS,
@@ -174,6 +178,7 @@ impl Session {
             })
             .ok()?;
         let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_git-fetchview"));
+        cmd.args(args);
         cmd.env_clear();
         cmd.cwd(world.work.path());
         for key in ["PATH", "TMPDIR", "LLVM_PROFILE_FILE"] {
@@ -690,6 +695,25 @@ fn the_search_box_takes_not_and_or_and_switches_to_regex_with_ctrl_r() {
     s.send("\x1b");
     // Esc and the next key sent together would read as Alt-q.
     s.wait_until("the box closed", |t| !t.contains('\u{2588}'));
+    s.send("q");
+    assert!(s.wait_exit().success());
+}
+
+#[test]
+fn a_remote_name_on_the_command_line_opens_its_refs_straight_away() {
+    let world = World::new();
+    let Some(mut s) = world.start_with(&["origin"]) else {
+        eprintln!("no pty available, skipping");
+        return;
+    };
+    // No remote list first: the refs, titled by the URL it stands for.
+    s.wait_for("refs of ");
+    s.wait_for("refs/tags/v1.0");
+    assert!(!s.text().contains("remotes"), "{}", s.text());
+    // Esc goes back to the list, where the real remote is.
+    s.send("\x1b");
+    s.wait_for("remotes");
+    s.wait_for("origin");
     s.send("q");
     assert!(s.wait_exit().success());
 }

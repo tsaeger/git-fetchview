@@ -13,6 +13,7 @@ pub mod error;
 pub mod git;
 pub mod hide;
 pub mod remotes;
+pub mod resolve;
 pub mod search;
 pub mod tui;
 pub mod viewer;
