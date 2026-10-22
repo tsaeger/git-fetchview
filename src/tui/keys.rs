@@ -13,7 +13,7 @@
 //! | `Ctrl-f` / `Ctrl-b`     | a page down / up (also PageDown/Up) |
 //! | `l` / `Right` / `Enter` | drop in (select, go to next level)  |
 //! | `h` / `Left` / `Esc`    | drop out (never exits at top level) |
-//! | `/`                     | search / filter                     |
+//! | `/` / `i`               | edit the search box                 |
 //! | `c`                     | clear search / filter               |
 //! | `s`                     | sort mode: `h`/`l` pick the column, `r` reverses, `s`/`Esc` done |
 //! | `r`                     | reverse the sort order              |
@@ -21,8 +21,8 @@
 //! | `a`                     | toggle all visible rows (multi-select) |
 //! | `q` / `Ctrl-c`          | quit, from any level                |
 //!
-//! While typing a search, characters are text; `Enter` confirms the filter
-//! and `Esc` abandons it.
+//! While typing a search, characters are text; `Enter` and `Esc` both leave
+//! the box and keep the filter.
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
