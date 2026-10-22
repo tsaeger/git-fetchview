@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use crate::cli::{AddArgs, AddSource};
 use crate::config::Config;
 use crate::error::{Error, Result};
-use crate::git::Cmd;
+use crate::git::{Cmd, redact_url};
 use crate::remotes::entry::{Entry, key, validate_url};
 use crate::remotes::file::{merge, remove as remove_lines, render_line, write_atomic};
 use crate::remotes::plan::{Plan, plan};
@@ -111,7 +111,7 @@ fn picker_rows(plan: &Plan) -> Vec<Row> {
 
 fn row_cells(entry: &Entry) -> Vec<String> {
     let tags = entry.tags.iter().cloned().collect::<Vec<_>>().join(",");
-    vec![entry.display_label(), entry.url.clone(), tags]
+    vec![entry.display_label(), redact_url(&entry.url), tags]
 }
 
 /// Collect remotes from a source into a remotes file.

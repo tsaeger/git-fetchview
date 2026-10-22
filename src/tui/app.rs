@@ -4,7 +4,7 @@
 //! Picker state machine: remotes, then refs. Pure, so it is easy to test.
 
 use crate::error::{Error, Result};
-use crate::git::{Remote, RemoteRef};
+use crate::git::{Remote, RemoteRef, redact_url};
 use crate::tui::keys::{Action, Command, Mode};
 use crate::tui::list::{List, SortKeys, SortOrder};
 
@@ -63,7 +63,8 @@ impl From<Vec<RemoteRef>> for Loaded {
 pub type Loader<'a> = dyn FnMut(&Remote) -> Result<Loaded> + 'a;
 
 fn remote_cells(r: &Remote) -> Vec<String> {
-    vec![r.name.clone(), r.url.clone(), r.tags.join(",")]
+    // The screen can be shared or photographed, like the trail.
+    vec![r.name.clone(), redact_url(&r.url), r.tags.join(",")]
 }
 
 /// Picker state.

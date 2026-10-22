@@ -27,7 +27,7 @@ tig FETCH_HEAD
 ```
 
 The trail uses the remote's full URL, not its name, so it works on anyone's
-machine. A password embedded in a URL is left out.
+machine. A password embedded in a URL is left out of the trail and the picker.
 
 ## Install
 

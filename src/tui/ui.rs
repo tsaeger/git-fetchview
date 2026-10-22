@@ -453,6 +453,16 @@ mod tests {
     }
 
     #[test]
+    fn a_password_in_a_remote_url_is_not_drawn() {
+        let app = App::new(vec![remote("work", "https://dev:s3cret@h/o.git", &[])]);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(60, 6, |f| draw(f, &app, &theme, ""));
+        let text = lines.join("\n");
+        assert!(!text.contains("s3cret"), "{text}");
+        assert!(text.contains("https://dev@h/o.git"), "{text}");
+    }
+
+    #[test]
     fn the_header_marks_the_sorted_column_and_direction() {
         let mut app = App::new(vec![remote("a", "https://h/a", &[])]);
         let mut no_refs = |_: &Remote| Ok(Loaded::default());
