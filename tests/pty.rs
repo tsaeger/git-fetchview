@@ -435,7 +435,8 @@ fn n_adds_a_url_and_puts_the_cursor_on_the_new_row() {
     s.send("\r");
     s.wait_for("added team/proj");
     s.wait_until("the cursor on the new row", |t| {
-        t.lines().any(|l| l.contains("> team/proj"))
+        t.lines()
+            .any(|l| l.starts_with("│>") && l.contains("team/proj"))
     });
     assert!(world.collected_file().contains("example.org/team/proj"));
 
@@ -493,7 +494,7 @@ fn p_makes_a_collected_remote_a_real_one() {
     s.wait_for("added remote team");
     s.wait_until("the cursor on the real remote", |t| {
         t.lines()
-            .any(|l| l.contains("> team") && !l.contains("manual"))
+            .any(|l| l.starts_with("│>") && l.contains("team") && !l.contains("manual"))
     });
     assert_eq!(
         world.git_output(&["remote"]).lines().collect::<Vec<_>>(),
@@ -764,7 +765,7 @@ fn the_picker_starts_where_you_left_off() {
 
     let mut s = session!(world);
     s.wait_until("the cursor on zeta", |t| {
-        t.lines().any(|l| l.starts_with("│> zeta"))
+        t.lines().any(|l| l.starts_with("│>") && l.contains("zeta"))
     });
     s.send("\r");
     s.wait_until("the cursor on the tag", |t| {
@@ -798,7 +799,8 @@ fn remember_false_starts_at_the_top() {
         .unwrap();
     let mut s = session!(world);
     s.wait_until("the cursor on origin", |t| {
-        t.lines().any(|l| l.starts_with("│> origin"))
+        t.lines()
+            .any(|l| l.starts_with("│>") && l.contains("origin"))
     });
     s.send("\r");
     s.wait_for("refs of origin");

@@ -120,10 +120,11 @@ how many it hid, and opening mainline itself shows everything. See
 | `j` `k` / `↓` `↑`   | move (counts work: `5j`, `5G`)                   |
 | `Enter`             | pick this one and go to the next level           |
 | `Esc`               | go back (does nothing at the top)                |
-| `h` `l` / `←` `→`   | move the column cursor (the underlined header)   |
+| `h` `l` / `←` `→`   | move the column cursor (underlines its filter box) |
+| `f`                 | filter the column under the cursor; `Esc` or `Enter` leaves the box |
 | `/` or `i`          | edit the search box; `Esc` or `Enter` leaves it  |
 | `Ctrl-r`            | in the search box: switch between plain and regex |
-| `c`                 | clear the search and the sort                    |
+| `c`                 | clear the search, the column filters and the sort |
 | `s`                 | sort the column under the cursor: up, down, off  |
 | `H`                 | in the refs list: show or hide the hidden refs   |
 | `n`                 | add a URL to your collected remotes              |

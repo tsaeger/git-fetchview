@@ -486,7 +486,11 @@ impl App {
             return Flow::Continue;
         }
         match action {
-            Action::Search => self.typing = true,
+            Action::Search => {
+                self.list_mut().begin_search();
+                self.typing = true;
+            }
+            Action::Filter => self.typing = self.list_mut().begin_column_edit(),
             Action::Clear => self.list_mut().clear(),
             Action::Sort => self.list_mut().cycle_sort(),
             Action::ColumnPrev => self.list_mut().move_column(-1),
@@ -872,7 +876,10 @@ impl App {
             Action::Backspace => self.list_mut().pop(),
             Action::ToggleRegex => self.list_mut().toggle_mode(),
             // Both leave the box. The text stays, so the filter stays.
-            Action::Enter | Action::Back => self.typing = false,
+            Action::Enter | Action::Back => {
+                self.typing = false;
+                self.list_mut().end_edit();
+            }
             _ => {}
         }
     }
@@ -1213,6 +1220,34 @@ mod tests {
         assert_eq!(a.list().visible(), [1]);
         a.update(Action::Clear, &mut refs);
         assert_eq!(a.list().visible().len(), 2);
+    }
+
+    #[test]
+    fn f_filters_the_column_under_the_cursor_and_c_clears_it() {
+        let mut a = app();
+        a.update(Action::ColumnNext, &mut refs);
+        a.update(Action::Filter, &mut refs);
+        assert!(a.typing());
+        a.update(Action::Char('2'), &mut refs);
+        a.update(Action::Enter, &mut refs);
+        assert!(!a.typing());
+        assert_eq!(a.list().visible(), [1]);
+        assert_eq!(a.list().column_filter(1), "2");
+        assert_eq!(a.list().filter(), "", "the search box is untouched");
+        a.update(Action::Search, &mut refs);
+        a.update(Action::Char('x'), &mut refs);
+        assert_eq!(a.list().filter(), "x", "typing goes back to the search");
+        a.update(Action::Back, &mut refs);
+        a.update(Action::Clear, &mut refs);
+        assert_eq!(a.list().visible().len(), 2);
+    }
+
+    #[test]
+    fn f_does_nothing_on_the_refs_list() {
+        let mut a = app();
+        a.update(Action::Enter, &mut refs);
+        a.update(Action::Filter, &mut refs);
+        assert!(!a.typing());
     }
 
     #[test]

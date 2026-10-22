@@ -16,7 +16,8 @@
 //! | `h` / `Left`            | column cursor one column left       |
 //! | `l` / `Right`           | column cursor one column right      |
 //! | `/` / `i`               | edit the search box                 |
-//! | `c`                     | clear search and sort               |
+//! | `f`                     | filter the column under the column cursor |
+//! | `c`                     | clear search, column filters and sort |
 //! | `s`                     | sort the column: ascending, descending, none |
 //! | `Space`                 | toggle a row and advance, or the highlighted rows (multi-select) |
 //! | `J` / `K`, Shift-`↓`/`↑` | move and highlight a range (multi-select; Shift-arrows not in Terminal.app) |
@@ -57,6 +58,8 @@ pub enum Action {
     Interrupt,
     /// Start editing the search box.
     Search,
+    /// Start editing the filter box of the column under the column cursor.
+    Filter,
     /// Ask to remove the collected remote under the cursor.
     Delete,
     /// Open a prompt for a new remote's URL.
@@ -291,6 +294,7 @@ fn map_normal(code: KeyCode, modifiers: KeyModifiers) -> Option<Action> {
         KeyCode::Char('a') => Some(Action::ToggleAll),
         KeyCode::Char('s') => Some(Action::Sort),
         KeyCode::Char('/' | 'i') => Some(Action::Search),
+        KeyCode::Char('f') => Some(Action::Filter),
         KeyCode::Char('c') => Some(Action::Clear),
         KeyCode::Char('d') => Some(Action::Delete),
         KeyCode::Char('n') => Some(Action::New),

@@ -160,7 +160,11 @@ impl Select {
             return SelectFlow::Continue;
         }
         match action {
-            Action::Search => self.typing = true,
+            Action::Search => {
+                self.list.begin_search();
+                self.typing = true;
+            }
+            Action::Filter => self.typing = self.list.begin_column_edit(),
             Action::Clear => self.list.clear(),
             Action::Sort => self.list.cycle_sort(),
             Action::ColumnPrev => self.list.move_column(-1),
@@ -208,7 +212,10 @@ impl Select {
             Action::Backspace => self.list.pop(),
             Action::ToggleRegex => self.list.toggle_mode(),
             // Both leave the box. The text stays, so the filter stays.
-            Action::Enter | Action::Back => self.typing = false,
+            Action::Enter | Action::Back => {
+                self.typing = false;
+                self.list.end_edit();
+            }
             _ => {}
         }
     }
@@ -491,6 +498,19 @@ mod tests {
         s.update(Action::Search);
         assert_eq!(s.update(Action::Enter), SelectFlow::Continue);
         assert!(!s.typing());
+    }
+
+    #[test]
+    fn f_filters_one_column_and_enter_leaves_the_box() {
+        let mut s = Select::new(rows());
+        s.update(Action::ColumnNext);
+        s.update(Action::Filter);
+        assert!(s.typing());
+        s.update(Action::Char('u'));
+        s.update(Action::Char('s'));
+        assert_eq!(s.update(Action::Enter), SelectFlow::Continue);
+        assert!(!s.typing());
+        assert_eq!(s.list().visible(), [2]);
     }
 
     #[test]

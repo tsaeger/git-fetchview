@@ -46,6 +46,23 @@ pub struct SortKeys {
     pub group: u8,
 }
 
+/// What typed characters go into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Target {
+    /// The search box on the top line.
+    #[default]
+    Search,
+    /// The filter box under this column's header.
+    Column(usize),
+}
+
+/// One column's filter: the text and what it compiled to.
+#[derive(Debug, Clone, Default)]
+struct ColumnFilter {
+    text: String,
+    matcher: Matcher,
+}
+
 /// Rows of display text plus a search filter and a cursor into the visible rows.
 #[derive(Debug, Clone, Default)]
 pub struct List {
@@ -63,6 +80,9 @@ pub struct List {
     matcher: Matcher,
     /// Why the filter as typed does not compile, in regex mode.
     filter_error: Option<String>,
+    /// Per-column filters, by column index. Filled the first time one is edited.
+    column_filters: Vec<ColumnFilter>,
+    target: Target,
     cursor: usize,
 }
 
@@ -220,6 +240,7 @@ impl List {
     pub fn visible(&self) -> Vec<usize> {
         let mut rows: Vec<usize> = (0..self.labels.len())
             .filter(|&i| self.matcher.is_row_match(&self.labels[i], &self.cells[i]))
+            .filter(|&i| self.column_filters_match(i))
             .collect();
         let keys = &self.keys;
         if let Some((column, direction)) = self.sorted {
@@ -341,21 +362,89 @@ impl List {
         self.cursor = self.visible().len().saturating_sub(1);
     }
 
-    /// Append to the filter.
+    /// Append to whatever is being edited: the search or a column's filter.
     pub fn push(&mut self, c: char) {
-        self.filter.push(c);
+        match self.target {
+            Target::Search => self.filter.push(c),
+            Target::Column(k) => self.column_filters[k].text.push(c),
+        }
         self.refilter();
     }
 
-    /// Remove the last filter character.
+    /// Remove the last character of whatever is being edited.
     pub fn pop(&mut self) {
-        self.filter.pop();
+        match self.target {
+            Target::Search => self.filter.pop(),
+            Target::Column(k) => self.column_filters[k].text.pop(),
+        };
         self.refilter();
     }
 
-    /// Clear the filter and the sort. The column cursor stays where it is.
+    /// Whether this list has more than one column to filter.
+    #[must_use]
+    pub fn filterable(&self) -> bool {
+        self.columns().len() > 1
+    }
+
+    /// Start editing the filter of the column under the column cursor.
+    /// Returns false if the list has no per-column filters.
+    pub fn begin_column_edit(&mut self) -> bool {
+        if !self.filterable() {
+            return false;
+        }
+        let columns = self.columns().len();
+        self.column_filters
+            .resize_with(columns, ColumnFilter::default);
+        self.target = Target::Column(self.column_index());
+        true
+    }
+
+    /// Start editing the search box.
+    pub fn begin_search(&mut self) {
+        self.target = Target::Search;
+    }
+
+    /// Stop editing a column filter; typed characters go to the search again.
+    pub fn end_edit(&mut self) {
+        self.target = Target::Search;
+    }
+
+    /// The column whose filter is being edited, if any.
+    #[must_use]
+    pub fn editing_column(&self) -> Option<usize> {
+        match self.target {
+            Target::Column(k) => Some(k),
+            Target::Search => None,
+        }
+    }
+
+    /// Where the column cursor is, as an index into [`List::columns`].
+    #[must_use]
+    pub fn column_index(&self) -> usize {
+        self.column.min(self.columns().len() - 1)
+    }
+
+    /// The filter text of column `k`; empty if it has none.
+    #[must_use]
+    pub fn column_filter(&self, k: usize) -> &str {
+        self.column_filters.get(k).map_or("", |f| f.text.as_str())
+    }
+
+    fn column_filters_match(&self, row: usize) -> bool {
+        self.column_filters.iter().enumerate().all(|(k, f)| {
+            f.text.is_empty() || {
+                let cell = self.cells[row].get(k).map_or("", String::as_str);
+                f.matcher.is_match(cell)
+            }
+        })
+    }
+
+    /// Clear the search, the column filters and the sort. The column cursor
+    /// stays where it is.
     pub fn clear(&mut self) {
         self.filter.clear();
+        self.column_filters.iter_mut().for_each(|f| f.text.clear());
+        self.target = Target::Search;
         self.sorted = None;
         self.refilter();
     }
@@ -380,13 +469,19 @@ impl List {
     }
 
     fn refilter(&mut self) {
-        match Matcher::new(self.mode, &self.filter) {
-            Ok(matcher) => {
-                self.matcher = matcher;
-                self.filter_error = None;
-            }
-            Err(why) => self.filter_error = Some(why),
+        let mode = self.mode;
+        let mut error = None;
+        match Matcher::new(mode, &self.filter) {
+            Ok(matcher) => self.matcher = matcher,
+            Err(why) => error = Some(why),
         }
+        for f in &mut self.column_filters {
+            match Matcher::new(mode, &f.text) {
+                Ok(matcher) => f.matcher = matcher,
+                Err(why) => error = Some(why),
+            }
+        }
+        self.filter_error = error;
         self.cursor = 0;
     }
 }
@@ -759,6 +854,118 @@ mod tests {
 
     fn numbered(n: usize) -> List {
         List::new((0..n).map(|i| format!("row{i:02}")).collect())
+    }
+
+    fn remotes() -> List {
+        let row = |n: &str, u: &str, src: &str| {
+            (
+                vec![n.to_owned(), u.to_owned(), src.to_owned()],
+                SortKeys {
+                    name: n.into(),
+                    url: u.into(),
+                    source: src.into(),
+                    group: 0,
+                },
+            )
+        };
+        let (cells, keys): (Vec<_>, Vec<_>) = [
+            row("net", "https://k/net", "maintainers"),
+            row("mm", "https://k/mm", "merges"),
+            row("usb", "https://k/net-usb", "maintainers"),
+        ]
+        .into_iter()
+        .unzip();
+        List::with_cells(cells, keys)
+    }
+
+    fn type_into(l: &mut List, text: &str) {
+        text.chars().for_each(|c| l.push(c));
+    }
+
+    #[test]
+    fn a_column_filter_only_looks_at_its_own_column() {
+        let mut l = remotes();
+        l.move_column(2);
+        assert!(l.begin_column_edit());
+        type_into(&mut l, "maint");
+        assert_eq!(l.visible(), [0, 2]);
+        // "net" is in the url of the third row, but this filter is on source.
+        l.end_edit();
+        l.move_column(-1);
+        assert!(l.begin_column_edit());
+        type_into(&mut l, "net");
+        assert_eq!(l.visible(), [0, 2]);
+        l.end_edit();
+        l.move_column(-1);
+        assert!(l.begin_column_edit());
+        type_into(&mut l, "usb");
+        assert_eq!(l.visible(), [2]);
+    }
+
+    #[test]
+    fn search_runs_over_what_the_column_filters_left() {
+        let mut l = remotes();
+        l.move_column(2);
+        l.begin_column_edit();
+        type_into(&mut l, "maint");
+        l.end_edit();
+        type_into(&mut l, "usb");
+        assert_eq!(l.visible(), [2]);
+        assert_eq!(l.filter(), "usb");
+        assert_eq!(l.column_filter(2), "maint");
+    }
+
+    #[test]
+    fn column_filters_take_not_and_or_like_search() {
+        let mut l = remotes();
+        l.begin_column_edit();
+        type_into(&mut l, "!mm");
+        assert_eq!(l.visible(), [0, 2]);
+    }
+
+    #[test]
+    fn typing_goes_to_the_column_until_the_edit_ends() {
+        let mut l = remotes();
+        assert_eq!(l.editing_column(), None);
+        l.move_column(1);
+        l.begin_column_edit();
+        assert_eq!(l.editing_column(), Some(1));
+        type_into(&mut l, "k");
+        l.pop();
+        assert_eq!(l.column_filter(1), "");
+        l.end_edit();
+        type_into(&mut l, "x");
+        assert_eq!(l.filter(), "x");
+    }
+
+    #[test]
+    fn clear_also_empties_the_column_filters() {
+        let mut l = remotes();
+        l.begin_column_edit();
+        type_into(&mut l, "mm");
+        l.end_edit();
+        l.clear();
+        assert_eq!(l.column_filter(0), "");
+        assert_eq!(l.visible(), [0, 1, 2]);
+    }
+
+    #[test]
+    fn a_list_with_one_column_has_no_column_filters() {
+        let mut l = List::new(vec!["a".into(), "b".into()]).with_columns(vec![SortColumn::Label]);
+        assert!(!l.filterable());
+        assert!(!l.begin_column_edit());
+        assert_eq!(l.editing_column(), None);
+    }
+
+    #[test]
+    fn a_bad_regex_in_a_column_filter_is_reported() {
+        let mut l = remotes();
+        l.toggle_mode();
+        l.begin_column_edit();
+        l.push('(');
+        assert!(l.filter_error().is_some());
+        l.pop();
+        assert!(l.filter_error().is_none());
     }
 
     #[test]

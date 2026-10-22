@@ -5,8 +5,8 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState};
 
 use crate::tui::app::{App, Level};
@@ -113,6 +113,7 @@ fn render_table(
         }
     });
 
+    let boxes = list.filterable();
     let header = Row::new(headers.iter().map(|&(title, column)| {
         let sorted = column.is_some() && list.sort().map(|(c, _)| c) == column;
         let mut style = if sorted {
@@ -120,12 +121,18 @@ fn render_table(
         } else {
             Style::new().fg(theme.dim)
         };
-        // The column cursor: the column `s` will sort.
-        if column == Some(list.column()) {
+        // The column cursor: the column `s` will sort. With filter boxes it is
+        // underlined there, where the eye is; without them, on the header.
+        if !boxes && column == Some(list.column()) {
             style = style.add_modifier(Modifier::UNDERLINED);
         }
-        Cell::from(header_text(title, column, list.sort())).style(style)
-    }));
+        let mut lines = vec![Line::styled(header_text(title, column, list.sort()), style)];
+        if boxes {
+            lines.push(filter_box(column, list, theme));
+        }
+        Cell::from(Text::from(lines))
+    }))
+    .height(if boxes { 2 } else { 1 });
     let body = rows.into_iter().map(|r| Row::new(r.cells).style(r.style));
 
     let table = Table::new(body, constraints)
@@ -140,6 +147,42 @@ fn render_table(
         .highlight_symbol("> ");
     let mut state = TableState::default().with_selected(Some(list.cursor()));
     frame.render_stateful_widget(table, area, &mut state);
+}
+
+/// Mix `over` into `base`, `pct` percent of the way. Colours that are not RGB
+/// cannot be mixed, so `over` stands in.
+fn mix(base: Color, over: Color, pct: u16) -> Color {
+    let (Color::Rgb(r1, g1, b1), Color::Rgb(r2, g2, b2)) = (base, over) else {
+        return over;
+    };
+    let part = |a: u8, b: u8| {
+        let v = (u16::from(a) * (100 - pct) + u16::from(b) * pct) / 100;
+        u8::try_from(v).unwrap_or(u8::MAX)
+    };
+    Color::Rgb(part(r1, r2), part(g1, g2), part(b1, b2))
+}
+
+/// The filter box under a column header: darker when blank (with a dim
+/// placeholder), tinted when it has text, brighter while it is being edited.
+/// The column cursor underlines its box.
+fn filter_box<'a>(column: Option<SortColumn>, list: &List, theme: &Theme) -> Line<'a> {
+    let Some(k) = column.and_then(|c| list.columns().iter().position(|&x| x == c)) else {
+        return Line::default();
+    };
+    let text = list.column_filter(k);
+    let editing = list.editing_column() == Some(k);
+    let (content, fg, bg) = if editing {
+        (format!("{text}\u{2588}"), theme.fg, theme.selection)
+    } else if text.is_empty() {
+        ("filter".to_owned(), theme.dim, mix(theme.bg, theme.fg, 10))
+    } else {
+        (text.to_owned(), theme.fg, mix(theme.bg, theme.accent, 25))
+    };
+    let mut style = Style::new().fg(fg).bg(bg);
+    if k == list.column_index() {
+        style = style.add_modifier(Modifier::UNDERLINED);
+    }
+    Line::styled(content, style)
 }
 
 /// `5g  ` for keys typed but not finished, or nothing.
@@ -285,7 +328,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, theme: &Theme, pending: &str) {
     ])
     .areas(frame.area());
     frame.render_widget(
-        Paragraph::new(search_line(app.list(), app.typing(), theme)).style(base(theme)),
+        Paragraph::new(search_line(
+            app.list(),
+            app.typing() && app.list().editing_column().is_none(),
+            theme,
+        ))
+        .style(base(theme)),
         search,
     );
 
@@ -331,7 +379,12 @@ pub fn draw_select(frame: &mut Frame<'_>, select: &Select, theme: &Theme, pendin
     ])
     .areas(frame.area());
     frame.render_widget(
-        Paragraph::new(search_line(select.list(), select.typing(), theme)).style(base(theme)),
+        Paragraph::new(search_line(
+            select.list(),
+            select.typing() && select.list().editing_column().is_none(),
+            theme,
+        ))
+        .style(base(theme)),
         search,
     );
 
@@ -549,7 +602,7 @@ mod tests {
     fn a_password_in_a_remote_url_is_not_drawn() {
         let app = App::new(vec![remote("work", "https://dev:s3cret@h/o.git", &[])]);
         let theme = Theme::from(ThemeName::default());
-        let lines = screen(60, 6, |f| draw(f, &app, &theme, ""));
+        let lines = screen(60, 8, |f| draw(f, &app, &theme, ""));
         let text = lines.join("\n");
         assert!(!text.contains("s3cret"), "{text}");
         assert!(text.contains("https://dev@h/o.git"), "{text}");
@@ -600,11 +653,13 @@ mod tests {
             terminal.draw(|f| draw(f, app, &theme, "")).unwrap();
             let buffer = terminal.backend().buffer().clone();
             let line: String = (0..60).map(|x| buffer[(x, 2)].symbol()).collect();
+            // The box under the header is where the cursor shows.
+            assert!(!buffer[(2, 2)].modifier.contains(Modifier::UNDERLINED));
             ["name", "url", "source"]
                 .iter()
                 .map(|title| {
                     let x = u16::try_from(line.find(title).unwrap()).unwrap();
-                    buffer[(x, 2)].modifier.contains(Modifier::UNDERLINED)
+                    buffer[(x, 3)].modifier.contains(Modifier::UNDERLINED)
                 })
                 .collect()
         };
@@ -631,7 +686,7 @@ mod tests {
             &["x".repeat(100).as_str()],
         )]);
         let theme = Theme::from(ThemeName::default());
-        let lines = screen(40, 6, |f| draw(f, &app, &theme, ""));
+        let lines = screen(40, 8, |f| draw(f, &app, &theme, ""));
         assert_eq!(lines.iter().filter(|l| l.contains('x')).count(), 1);
     }
 
@@ -785,5 +840,47 @@ mod tests {
         let net = lines.iter().find(|l| l.contains("net")).unwrap();
         assert!(origin.contains(REAL_DOT), "{origin:?}");
         assert!(!net.contains(REAL_DOT), "{net:?}");
+    }
+
+    #[test]
+    fn blank_filter_boxes_show_a_placeholder_until_one_is_edited() {
+        let mut app = App::new(vec![remote("a", "https://h/a", &[])]);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(70, 8, |f| draw(f, &app, &theme, ""));
+        assert_eq!(lines[3].matches("filter").count(), 3, "{:?}", lines[3]);
+        step(&mut app, &[Action::Filter]);
+        let lines = screen(70, 8, |f| draw(f, &app, &theme, ""));
+        // The box being edited drops its placeholder and shows a cursor.
+        assert_eq!(lines[3].matches("filter").count(), 2, "{:?}", lines[3]);
+        assert!(lines[3].contains('\u{2588}'), "{:?}", lines[3]);
+        step(&mut app, &[Action::Char('z')]);
+        let lines = screen(70, 8, |f| draw(f, &app, &theme, ""));
+        assert!(lines[3].contains("z\u{2588}"), "{:?}", lines[3]);
+        assert!(
+            !lines[0].contains('\u{2588}'),
+            "the search box has no cursor"
+        );
+    }
+
+    #[test]
+    fn the_refs_list_has_no_filter_boxes() {
+        let mut app = App::new(vec![remote("a", "https://h/a", &[])]);
+        let mut load = |_: &Remote| {
+            Ok(Loaded {
+                refs: vec![RemoteRef {
+                    name: "refs/heads/dev".into(),
+                    oid: "1234567890".into(),
+                }],
+                ..Loaded::default()
+            })
+        };
+        app.update(Action::Enter, &mut load);
+        let theme = Theme::from(ThemeName::default());
+        let lines = screen(70, 8, |f| draw(f, &app, &theme, ""));
+        assert!(
+            lines.iter().any(|l| l.contains("refs/heads/dev")),
+            "{lines:?}"
+        );
+        assert!(lines.iter().all(|l| !l.contains("filter")), "{lines:?}");
     }
 }
