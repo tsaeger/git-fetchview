@@ -1,9 +1,10 @@
 ---
 id: TASK-29
 title: Publish GitHub releases with prebuilt binaries
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-10-22T03:17:00Z'
+updated_date: '2026-10-22T06:02:00Z'
 labels: []
 dependencies: []
 ordinal: 19000
@@ -20,6 +21,12 @@ Today the README install is clone plus cargo xtask install, which needs a Rust t
 - [ ] #1 Pushing a v* tag builds archives for Linux x86_64, Linux aarch64 and macOS arm64 and attaches them to a GitHub release
 - [ ] #2 The release has checksums and notes from the changelog
 - [ ] #3 The workflow can be rehearsed without publishing (a dry-run path or workflow_dispatch)
-- [ ] #4 The crates.io, Homebrew and Nix question is decided and written down
-- [ ] #5 README install section and docs/install.md are updated
+- [x] #4 The crates.io, Homebrew and Nix question is decided and written down
+- [x] #5 README install section and docs/install.md are updated
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+cargo xtask package and release-notes work locally on macOS (archive unpacked and run, checksum verified). Criteria 1-3 stay unchecked until the workflow has run on GitHub: first a manual rehearsal from the Actions tab, then a real tag.
+<!-- SECTION:NOTES:END -->
