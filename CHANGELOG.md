@@ -20,12 +20,25 @@ All notable changes to this project are documented here. The format follows
 - List collected remotes in the picker (17d24a2)
 - **tui:** Add a multi-select picker (a34741f)
 - Add the add, list and remove commands (c3b3587)
+- **tui:** Add s to cycle the sort order (3929cf3)
+- **tui:** Follow vim motions for g, G, counts and paging (91c2ac0)
+- **tui:** Sort refs by name naturally and add a sort mode (36564b3)
+- Choose the viewer with fetchview.viewer (97eead5)
+- **tui:** Align picker columns with a table and header (12f29a1)
+- Hide refs that mainline and stable already carry (26ea37e)
+- **tui:** Show the search in a box at the top and edit it with i (725c74a)
 
 ### Build
 
 - Add git-cliff changelog and xtask task (a0bd686)
 - Make deny and audit tasks usable (b3eb8e7)
 - Set minimum supported rust version to 1.88 (a6dba5f)
+- Add cargo xtask install (2ca0083)
+- **xtask:** Skip backlog files in the header check (9be0004)
+- Pin the toolchain with rust-toolchain.toml and a nix flake (ed57147)
+- Run cargo xtask ci on GitHub Actions (f60a6e5)
+- Track demo gifs with git lfs (d9d2a1b)
+- Bump actions/checkout to v7 (9c8fb4f)
 
 ### Documentation
 
@@ -35,14 +48,34 @@ All notable changes to this project are documented here. The format follows
 - Add implementation plan for remote sources (78da3d9)
 - Describe collecting remotes (8ba41af)
 - Regenerate changelog (59a3ef8)
+- Regenerate changelog (bfcbdba)
+- Add scripts to record the README demo (e944215)
+- Slow down the add step of the demo (85d486b)
+- Add the README demo and a shared vhs style (124141a)
+- Plan the feature showcase demos (ef88af7)
+- Re-record the README demo with the search box (96d71d7)
+- Add architecture notes and a Markdown and Mermaid check (243d4d5)
+- Rewrite the README for new users (19d1020)
 
 ### Fixed
 
 - Harden remote sources after review (90e7e09)
+- **tui:** Put the cursor at the top after r (b63953e)
+- Show already collected entries as (have) in add (65702b2)
+- Treat an empty port as no port when comparing urls (6de0cb3)
+- Stop list and --dry-run panicking when stdout closes early (354714d)
+- **tui:** Hide passwords in remote URLs on screen (cfbc9cf)
 
 ### Miscellaneous
 
 - Add license, gitignore and tool config (8ef7682)
+- Ignore the _preview directory (547d6bd)
+- Track tasks with backlog.md (c04d5c8)
+- Add the first backlog tasks (b918a46)
+- **backlog:** Close TASK-2, track column alignment as TASK-4 (b3ccbc7)
+- **backlog:** Close TASK-8, the CI failure was a runner outage (f9d958e)
+- **backlog:** Close TASK-9, checkout v7 passes CI (94c50b7)
+- **backlog:** Close TASK-10 and TASK-11 (c1ae99a)
 
 ### Tests
 
