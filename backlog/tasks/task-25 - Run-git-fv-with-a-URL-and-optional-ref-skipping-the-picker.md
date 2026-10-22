@@ -1,9 +1,10 @@
 ---
 id: TASK-25
 title: Run git fv with a URL and optional ref, skipping the picker
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T03:16:00Z'
+updated_date: '2026-10-22T05:58:00Z'
 labels: []
 dependencies: []
 ordinal: 17000
@@ -17,9 +18,9 @@ ordinal: 17000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 git fv <url> opens that URL's refs list
-- [ ] #2 git fv <url> <ref> fetches and views without a TUI, printing the trail
-- [ ] #3 A short ref or #N is resolved against ls-remote; no match or several matches is a clear error
-- [ ] #4 Both GitHub-style and GitLab-style pull request refs resolve from a number
-- [ ] #5 Tests cover resolution, ambiguity and the URL validation; README and docs/usage.md are updated
+- [x] #1 git fv <url> opens that URL's refs list
+- [x] #2 git fv <url> <ref> fetches and views without a TUI, printing the trail
+- [x] #3 A short ref or #N is resolved against ls-remote; no match or several matches is a clear error
+- [x] #4 Both GitHub-style and GitLab-style pull request refs resolve from a number
+- [x] #5 Tests cover resolution, ambiguity and the URL validation; README and docs/usage.md are updated
 <!-- AC:END -->
