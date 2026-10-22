@@ -49,10 +49,14 @@ git fetchview list
 git fetchview remove netdev/net
 ```
 
-`add` shows a picker of what it found: `Space` toggles a row, `a` toggles every
-visible row, `/` filters, `Enter` writes, `q` writes nothing. Rows already
-collected show as `(have)`. `--all` adds everything new without the picker, and
-`--dry-run` prints what would be written.
+`add merges` and `add maintainers` show a picker of what they found: `Space`
+toggles a row, `a` toggles every visible row, `/` filters, `Enter` writes, `q`
+writes nothing. Rows already collected show as `(have)`. `--all` adds everything
+new without the picker, and `--dry-run` prints what would be written.
+
+`add url` writes the URLs you named without asking, and any `add` with nothing
+new to choose skips the picker too, so neither needs a terminal. A search with
+something new still needs one, or `--all`.
 
 Entries are written to `.git/fetchview.remotes` (shared by linked worktrees) and
 that path is added to `fetchview.remotes` in the local config. To keep one set

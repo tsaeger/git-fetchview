@@ -173,12 +173,35 @@ fn dry_run_changes_nothing() {
 }
 
 #[test]
-fn without_a_terminal_add_needs_all() {
+fn urls_named_by_hand_need_neither_a_terminal_nor_all() {
     let repo = Repo::new();
     let out = repo.fv(&["add", "url", NET]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(repo.remotes_file().contains(NET));
+}
+
+#[test]
+fn a_search_without_a_terminal_needs_all_but_only_when_something_is_new() {
+    let repo = Repo::new();
+    fs::write(
+        repo.path().join("MAINTAINERS"),
+        format!("NETWORKING\nT:\tgit {NET}\n"),
+    )
+    .unwrap();
+    let out = repo.fv(&["add", "maintainers"]);
     assert!(!out.status.success());
     assert!(stderr(&out).contains("terminal"), "{}", stderr(&out));
     assert_eq!(repo.remotes_file(), "");
+
+    assert!(repo.fv(&["add", "--all", "maintainers"]).status.success());
+    // Nothing new now, so there is nothing to choose and no terminal is needed.
+    let again = repo.fv(&["add", "maintainers"]);
+    assert!(again.status.success(), "{}", stderr(&again));
+    assert!(
+        stderr(&again).contains("tags updated 1"),
+        "{}",
+        stderr(&again)
+    );
 }
 
 #[test]

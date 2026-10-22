@@ -142,7 +142,10 @@ pub fn add(args: &AddArgs) -> Result<()> {
         .collect();
     let plan = plan(scanned.entries, &in_target, &elsewhere);
 
-    let chosen: Vec<Entry> = if args.all {
+    // The picker is for choosing among what a search found. URLs named by hand
+    // are already the choice, and with nothing new there is nothing to choose.
+    let named_by_hand = matches!(args.source, AddSource::Url { .. });
+    let chosen: Vec<Entry> = if args.all || named_by_hand || plan.new.is_empty() {
         plan.new.clone()
     } else {
         if !(io::stdin().is_terminal() && io::stdout().is_terminal()) {
