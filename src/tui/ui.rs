@@ -7,7 +7,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Cell, Clear, Paragraph, Row, Table, TableState};
+use ratatui::widgets::{Block, Cell, Clear, Padding, Paragraph, Row, Table, TableState};
 
 use crate::tui::app::{App, Level};
 use crate::tui::keys::{HELP, HelpSection};
@@ -62,7 +62,10 @@ fn column_widths(headers: &[Header], rows: &[Vec<String>]) -> Vec<usize> {
             rows.iter()
                 .filter_map(|r| r.get(i))
                 .map(|c| width(c))
-                .fold(width(title) + 2, usize::max)
+                .fold(
+                    width(title) + if title.is_empty() { 0 } else { 2 },
+                    usize::max,
+                )
                 .min(COLUMN_CAP)
         })
         .collect()
@@ -150,6 +153,12 @@ fn render_table(
     frame.render_stateful_widget(table, area, &mut state);
 }
 
+/// Space between the help border and its text, and how far the panel is lifted
+/// from the background, in percent.
+const HELP_PAD_X: u16 = 2;
+const HELP_PAD_Y: u16 = 1;
+const HELP_TINT: u16 = 8;
+
 /// The lines of one help section, keys first, then a blank line.
 fn help_lines<'a>(section: &HelpSection, key_width: usize, theme: &Theme) -> Vec<Line<'a>> {
     let mut lines = vec![Line::styled(
@@ -172,7 +181,7 @@ fn help_lines<'a>(section: &HelpSection, key_width: usize, theme: &Theme) -> Vec
 /// Every key, in sections, over whatever is on screen. Any key closes it.
 fn draw_help(frame: &mut Frame<'_>, theme: &Theme) {
     let area = frame.area();
-    let room = usize::from(area.height.saturating_sub(2)).max(1);
+    let room = usize::from(area.height.saturating_sub(2 + 2 * HELP_PAD_Y)).max(1);
 
     // Whole sections go into a column until the next one would not fit.
     let mut columns: Vec<Vec<&HelpSection>> = vec![Vec::new()];
@@ -211,10 +220,10 @@ fn draw_help(frame: &mut Frame<'_>, theme: &Theme) {
         })
         .max()
         .unwrap_or(0);
-    let width = u16::try_from(content + 2)
+    let width = u16::try_from(content + 2 + usize::from(2 * HELP_PAD_X))
         .unwrap_or(u16::MAX)
         .min(area.width);
-    let height = u16::try_from(tallest + 2)
+    let height = u16::try_from(tallest + 2 + usize::from(2 * HELP_PAD_Y))
         .unwrap_or(u16::MAX)
         .min(area.height);
     let popup = Rect::new(
@@ -223,14 +232,23 @@ fn draw_help(frame: &mut Frame<'_>, theme: &Theme) {
         width,
         height,
     );
+    // Dim everything behind the popup so the keys are what the eye lands on.
+    let dimmed = Style::new().fg(theme.dim).remove_modifier(Modifier::BOLD);
+    for cell in &mut frame.buffer_mut().content {
+        cell.set_style(dimmed);
+    }
     frame.render_widget(Clear, popup);
+    let panel = Style::new()
+        .fg(theme.fg)
+        .bg(mix(theme.bg, theme.fg, HELP_TINT));
     let block = Block::bordered()
         .title(Span::styled(
             " keys \u{2014} any key closes ",
             Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
         ))
         .border_style(Style::new().fg(theme.accent))
-        .style(base(theme));
+        .padding(Padding::symmetric(HELP_PAD_X, HELP_PAD_Y))
+        .style(panel);
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
     let slots = Layout::horizontal(
@@ -245,7 +263,7 @@ fn draw_help(frame: &mut Frame<'_>, theme: &Theme) {
             .iter()
             .flat_map(|s| help_lines(s, *key_width, theme))
             .collect();
-        frame.render_widget(Paragraph::new(lines).style(base(theme)), *slot);
+        frame.render_widget(Paragraph::new(lines).style(panel), *slot);
     }
 }
 
