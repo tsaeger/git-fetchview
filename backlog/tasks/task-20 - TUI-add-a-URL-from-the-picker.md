@@ -4,6 +4,7 @@ title: 'TUI: add a URL from the picker'
 status: To Do
 assignee: []
 created_date: '2026-10-22T02:59:00Z'
+updated_date: '2026-10-22T03:00:00Z'
 labels: []
 dependencies: []
 ordinal: 19000
@@ -23,3 +24,9 @@ Press a in the remote picker to open a one-line prompt styled like the search bo
 - [ ] #4 Tests cover the prompt state machine and the render
 - [ ] #5 Keys, README and docs/usage.md are updated
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decision: after a successful add, stay in the remote list with the cursor on the new row (not drilling into refs, not ticking it).
+<!-- SECTION:NOTES:END -->
