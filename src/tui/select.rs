@@ -170,6 +170,7 @@ impl Select {
             | Action::Delete
             | Action::New
             | Action::Promote
+            | Action::Open
             | Action::Confirm
             | Action::Char(_)
             | Action::Backspace

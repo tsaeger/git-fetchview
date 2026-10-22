@@ -61,6 +61,8 @@ pub enum Action {
     New,
     /// Make the collected remote under the cursor a real git remote.
     Promote,
+    /// Open a prompt for a URL to browse once, without saving it.
+    Open,
     /// Say yes to the question being asked.
     Confirm,
     /// Clear the search / filter.
@@ -260,6 +262,7 @@ fn map_normal(code: KeyCode) -> Option<Action> {
         KeyCode::Char('d') => Some(Action::Delete),
         KeyCode::Char('n') => Some(Action::New),
         KeyCode::Char('p') => Some(Action::Promote),
+        KeyCode::Char('o') => Some(Action::Open),
         KeyCode::Char('q') => Some(Action::Quit),
         _ => None,
     })
@@ -321,6 +324,18 @@ mod tests {
         assert_eq!(
             p.feed(key(KeyCode::Char('5')), Mode::Confirm),
             cmd(Action::Back, None)
+        );
+    }
+
+    #[test]
+    fn o_opens_a_url_in_the_normal_keymap_only() {
+        assert_eq!(
+            map(key(KeyCode::Char('o')), Mode::Normal),
+            Some(Action::Open)
+        );
+        assert_eq!(
+            map(key(KeyCode::Char('o')), Mode::Prompt),
+            Some(Action::Char('o'))
         );
     }
 

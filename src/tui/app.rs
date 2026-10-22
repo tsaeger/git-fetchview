@@ -98,6 +98,8 @@ enum PromptKind {
     AddUrl,
     /// A name for the collected remote at this index, as a real remote.
     PromoteName(usize),
+    /// A URL to browse once, without saving it.
+    OpenUrl,
 }
 
 impl PromptKind {
@@ -105,6 +107,7 @@ impl PromptKind {
         match self {
             Self::AddUrl => "add url",
             Self::PromoteName(_) => "remote name",
+            Self::OpenUrl => "open url",
         }
     }
 }
@@ -177,6 +180,9 @@ pub struct App {
     /// The collected remote a remove question is open for.
     confirming: Option<usize>,
     prompt: Option<Prompt>,
+    /// Index of a remote typed at the `o` prompt, kept only while it is open.
+    /// It is always the last one, and never in the list.
+    temp: Option<usize>,
     next_load: u64,
     spinner: usize,
 }
@@ -203,6 +209,7 @@ impl App {
             loading: None,
             confirming: None,
             prompt: None,
+            temp: None,
             next_load: 0,
             spinner: 0,
         }
@@ -390,6 +397,7 @@ impl App {
             Action::Delete => self.ask_remove(),
             Action::New => self.open_prompt(PromptKind::AddUrl),
             Action::Promote => self.ask_promote(),
+            Action::Open => self.open_prompt(PromptKind::OpenUrl),
             Action::Enter => return self.enter(),
             Action::Quit
             | Action::Interrupt
@@ -495,7 +503,8 @@ impl App {
             return Flow::Continue;
         };
         let text = prompt.text.trim().to_owned();
-        if let PromptKind::PromoteName(index) = prompt.kind {
+        let kind = prompt.kind;
+        if let PromptKind::PromoteName(index) = kind {
             return self.submit_name(index, &text);
         }
         match validate_url(&text) {
@@ -506,12 +515,29 @@ impl App {
             Ok(url) => {
                 self.prompt = None;
                 let wanted = repo_key(&url);
-                if let Some(i) = self.remotes.iter().position(|r| repo_key(&r.url) == wanted) {
-                    self.remote_list.focus(i);
-                    self.notice = Some(format!("already listed as {}", self.remotes[i].name));
-                    Flow::Continue
-                } else {
-                    Flow::Add(url)
+                let listed = self.remotes.iter().position(|r| repo_key(&r.url) == wanted);
+                match (kind, listed) {
+                    (PromptKind::OpenUrl, Some(i)) => {
+                        self.remote_list.focus(i);
+                        self.begin_load(i)
+                    }
+                    (PromptKind::OpenUrl, None) => {
+                        // Held only while it is open, and never in the list.
+                        let at = self.remotes.len();
+                        self.remotes.push(Remote {
+                            name: url.clone(),
+                            url,
+                            tags: Vec::new(),
+                        });
+                        self.temp = Some(at);
+                        self.begin_load(at)
+                    }
+                    (_, Some(i)) => {
+                        self.remote_list.focus(i);
+                        self.notice = Some(format!("already listed as {}", self.remotes[i].name));
+                        Flow::Continue
+                    }
+                    (_, None) => Flow::Add(url),
                 }
             }
         }
@@ -576,6 +602,7 @@ impl App {
     fn step_loading(&mut self, action: Action) -> Flow {
         if matches!(action, Action::Back | Action::Interrupt) {
             self.loading = None;
+            self.forget_temp();
             Flow::CancelLoad
         } else {
             Flow::Continue
@@ -629,6 +656,7 @@ impl App {
         match result {
             Ok(loaded) if loaded.refs.is_empty() && loaded.hidden == 0 => {
                 self.error = Some(Error::NoRefs(self.remotes[index].name.clone()).to_string());
+                self.forget_temp();
             }
             Ok(Loaded { refs, hidden, note }) => {
                 let cells = refs
@@ -654,7 +682,10 @@ impl App {
                 self.chosen = Some(index);
                 self.level = Level::Refs;
             }
-            Err(e) => self.error = Some(e.to_string()),
+            Err(e) => {
+                self.error = Some(e.to_string());
+                self.forget_temp();
+            }
         }
     }
 
@@ -687,7 +718,27 @@ impl App {
             self.chosen = None;
             self.refs.clear();
             self.ref_list = List::default();
+            self.forget_temp();
         }
+    }
+
+    /// Drop the remote typed at the `o` prompt, if one is held.
+    fn forget_temp(&mut self) {
+        if let Some(index) = self.temp.take() {
+            self.remotes.truncate(index);
+        }
+    }
+
+    /// Start listing the refs of the remote at `index`.
+    fn begin_load(&mut self, index: usize) -> Flow {
+        let id = self.next_load;
+        self.next_load += 1;
+        self.loading = Some((id, index));
+        self.spinner = 0;
+        Flow::Load(Load {
+            id,
+            remote: self.remotes[index].clone(),
+        })
     }
 
     fn enter(&mut self) -> Flow {
@@ -695,16 +746,7 @@ impl App {
             return Flow::Continue;
         };
         match self.level {
-            Level::Remotes => {
-                let id = self.next_load;
-                self.next_load += 1;
-                self.loading = Some((id, index));
-                self.spinner = 0;
-                Flow::Load(Load {
-                    id,
-                    remote: self.remotes[index].clone(),
-                })
-            }
+            Level::Remotes => self.begin_load(index),
             Level::Refs => {
                 let chosen = &self.remotes[self.chosen.unwrap_or_default()];
                 Flow::Done(Selection {
@@ -1445,5 +1487,83 @@ mod tests {
         assert!(a.error().is_some());
         assert_eq!(a.prompt(), Some(("remote name", "netdev-net")));
         assert_eq!(a.list().total(), 3);
+    }
+
+    fn open_prompt_with(a: &mut App, url: &str) -> Flow {
+        a.step(Command::from(Action::Open));
+        typed(a, url);
+        a.step(Command::from(Action::Enter))
+    }
+
+    #[test]
+    fn o_opens_a_prompt_and_only_in_the_remote_list() {
+        let mut a = collected_app();
+        a.step(Command::from(Action::Open));
+        assert_eq!(a.prompt(), Some(("open url", "")));
+        let mut b = collected_app();
+        let mut load = |_: &Remote| Ok(refs_of(&["refs/heads/main"]));
+        b.update(Action::Enter, &mut load);
+        b.step(Command::from(Action::Open));
+        assert_eq!(b.prompt(), None);
+    }
+
+    #[test]
+    fn a_new_url_is_loaded_without_being_added_to_the_list() {
+        let mut a = collected_app();
+        let flow = open_prompt_with(&mut a, "https://u:secret@h/team/proj.git");
+        let load = load_request(flow);
+        assert_eq!(load.remote.url, "https://u@h/team/proj.git");
+        assert_eq!(load.remote.name, "https://u@h/team/proj.git");
+        assert_eq!(load.remote.tags, Vec::<String>::new());
+        assert_eq!(a.prompt(), None);
+        assert_eq!(a.list().total(), 3);
+        a.finish_load(load.id, Ok(refs_of(&["refs/heads/main"])));
+        assert_eq!(a.level(), Level::Refs);
+        assert_eq!(a.chosen_remote(), Some("https://u@h/team/proj.git"));
+        let Flow::Done(selection) = a.step(Command::from(Action::Enter)) else {
+            panic!("expected a selection");
+        };
+        assert_eq!(selection.url, "https://u@h/team/proj.git");
+        assert_eq!(selection.refname, "refs/heads/main");
+    }
+
+    #[test]
+    fn going_back_forgets_the_one_off_remote() {
+        let mut a = collected_app();
+        let load = load_request(open_prompt_with(&mut a, "https://h/team/proj"));
+        a.finish_load(load.id, Ok(refs_of(&["refs/heads/main"])));
+        a.step(Command::from(Action::Back));
+        assert_eq!(a.level(), Level::Remotes);
+        assert_eq!(a.remotes.len(), 3);
+        assert_eq!(a.list().total(), 3);
+    }
+
+    #[test]
+    fn cancelling_or_failing_the_load_forgets_it_too() {
+        let mut a = collected_app();
+        load_request(open_prompt_with(&mut a, "https://h/team/proj"));
+        assert_eq!(a.step(Command::from(Action::Back)), Flow::CancelLoad);
+        assert_eq!(a.remotes.len(), 3);
+
+        let load = load_request(open_prompt_with(&mut a, "https://h/team/proj"));
+        a.finish_load(load.id, Err(Error::NoRefs("x".into())));
+        assert_eq!(a.remotes.len(), 3);
+        assert!(a.error().is_some());
+    }
+
+    #[test]
+    fn a_bad_url_says_why_and_keeps_the_prompt() {
+        let mut a = collected_app();
+        assert_eq!(open_prompt_with(&mut a, "ext::sh"), Flow::Continue);
+        assert!(a.error().is_some());
+        assert!(a.prompt().is_some());
+    }
+
+    #[test]
+    fn a_url_already_listed_loads_that_remote_instead() {
+        let mut a = collected_app();
+        let load = load_request(open_prompt_with(&mut a, "git@h:net.git"));
+        assert_eq!(load.remote.name, "netdev/net");
+        assert_eq!(a.remotes.len(), 3);
     }
 }

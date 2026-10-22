@@ -314,7 +314,7 @@ fn esc_gives_up_on_a_remote_that_never_answers() {
     s.wait_for("esc cancel");
     s.send("\x1b");
     s.wait_until("the remote list again", |t| {
-        !t.contains("loading") && t.contains("j/k move")
+        !t.contains("loading") && t.contains("q quit")
     });
     // Still alive and responsive: Ctrl-C now quits.
     s.send("\x03");
@@ -471,6 +471,41 @@ fn p_makes_a_collected_remote_a_real_one() {
     );
     // The collected entry stays in its file.
     assert!(world.collected_file().contains("team/proj"));
+    s.send("q");
+    assert!(s.wait_exit().success());
+}
+
+#[test]
+fn o_browses_a_url_once_and_leaves_nothing_behind() {
+    let Ok(listener) = TcpListener::bind("127.0.0.1:0") else {
+        eprintln!("no local sockets, skipping");
+        return;
+    };
+    let port = listener.local_addr().unwrap().port();
+    let held = Arc::new(Mutex::new(Vec::new()));
+    let keep = Arc::clone(&held);
+    thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            keep.lock().unwrap().push(stream);
+        }
+    });
+
+    let world = World::new();
+    let mut s = session!(world);
+    s.wait_for("origin");
+    s.send("o");
+    s.wait_for("open url:");
+    s.send(&format!("git://127.0.0.1:{port}/once"));
+    s.send("\r");
+    s.wait_for(&format!("loading git://127.0.0.1:{port}/once"));
+    s.send("\x1b");
+    s.wait_until("the remote list again", |t| {
+        !t.contains("loading") && t.contains("origin")
+    });
+    // It was never a row, and nothing was written anywhere.
+    assert!(!s.text().contains("/once"), "{}", s.text());
+    assert_eq!(world.collected_file(), "");
+    assert_eq!(world.git_output(&["remote"]).trim(), "origin");
     s.send("q");
     assert!(s.wait_exit().success());
 }
