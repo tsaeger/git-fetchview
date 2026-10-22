@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.1] - 2026-10-22
 
 ### Added
 
@@ -27,6 +27,18 @@ All notable changes to this project are documented here. The format follows
 - **tui:** Align picker columns with a table and header (12f29a1)
 - Hide refs that mainline and stable already carry (26ea37e)
 - **tui:** Show the search in a box at the top and edit it with i (725c74a)
+- Count the https, ssh and scp forms of a repo as one (a333380)
+- **tui:** Show loading and let a slow ls-remote be cancelled (89df143)
+- **tui:** Remove a collected remote with d (a76aa94)
+- **tui:** Add a URL from the remote list with n (4cad449)
+- **tui:** Turn a collected remote into a real one with p (7f90846)
+- **tui:** Browse a URL once with o (b22555f)
+- Skip the add picker when there is nothing to choose (45bb7ef)
+- **tui:** Collect remotes from the picker with A (609a98c)
+- Hide merge refs and host-internal namespaces in the refs list (a0a1047)
+- Search with not, and, or and regex, switched with Ctrl-r (6a2f66d)
+- Run git fv with a URL and an optional ref, skipping the picker (7cd5337)
+- Start the picker where you left off (55d85b9)
 
 ### Build
 
@@ -40,6 +52,11 @@ All notable changes to this project are documented here. The format follows
 - Track demo gifs with git lfs (d9d2a1b)
 - Bump actions/checkout to v7 (9c8fb4f)
 - **cliff:** Leave backlog commits out of the changelog (9a94108)
+- Record why the runners stay on the latest labels (a7ce660)
+- Add a Nix fuzz shell and cargo xtask fuzz --all (67ad0ec)
+- Add cargo xtask coverage with cargo-llvm-cov (db0a154)
+- Publish GitHub releases with prebuilt binaries (9b2eb05)
+- **xtask:** Make prep-release take a version (0a77860)
 
 ### Documentation
 
@@ -58,6 +75,7 @@ All notable changes to this project are documented here. The format follows
 - Add architecture notes and a Markdown and Mermaid check (243d4d5)
 - Rewrite the README for new users (19d1020)
 - Add a demo for each feature and an index (91ef380)
+- Describe prep-release with a version (cca32f5)
 
 ### Fixed
 
@@ -67,6 +85,8 @@ All notable changes to this project are documented here. The format follows
 - Treat an empty port as no port when comparing urls (6de0cb3)
 - Stop list and --dry-run panicking when stdout closes early (354714d)
 - **tui:** Hide passwords in remote URLs on screen (cfbc9cf)
+- **tui:** Name both search keys in the key hints (fff9be7)
+- Word the add summary as "would add" on a dry run (9e725d0)
 
 ### Miscellaneous
 
@@ -78,4 +98,5 @@ All notable changes to this project are documented here. The format follows
 
 - Add fuzz targets for the git output parsers (37349d3)
 - Fuzz the remote source parsers (ee2ba54)
+- Drive the real binary in a pty (a188e49)
 
