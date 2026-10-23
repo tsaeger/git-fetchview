@@ -3,6 +3,11 @@
 
 # git-fetchview
 
+[![CI](https://github.com/tsaeger/git-fetchview/actions/workflows/ci.yml/badge.svg)](https://github.com/tsaeger/git-fetchview/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/tsaeger/git-fetchview)](https://github.com/tsaeger/git-fetchview/releases)
+[![License: MIT](https://img.shields.io/github/license/tsaeger/git-fetchview)](LICENSE)
+[![Rust 1.88+](https://img.shields.io/badge/rust-1.88%2B-orange?logo=rust)](https://www.rust-lang.org)
+
 Look at someone else's branch, tag or pull request without adding a remote,
 checking anything out, or touching your own branches.
 
