@@ -40,7 +40,7 @@ Sleep 600ms
 Escape
 Sleep 1000ms
 Hide
-Type "l"
+Enter
 Wait+Screen@120s /hidden/
 Show
 Sleep 3s

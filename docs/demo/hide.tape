@@ -29,7 +29,7 @@ Show
 Sleep 3500ms
 
 # Mainline itself is never filtered.
-Type "h"
+Escape
 Sleep 800ms
 Type "k"
 Sleep 800ms

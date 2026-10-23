@@ -19,7 +19,25 @@ write them, then pick one with `git fetchview`.
 
 Git lists tags as text, so `v6.10` lands before `v6.2`. `s` sorts the column under
 the column cursor (`h` and `l` move it): ascending, descending, then off. The
-header shows an arrow on the sorted column.
+header shows an arrow on the sorted column, and the info panel under the list
+shows the row under the cursor in full (`v` hides it).
+
+## Searching and filtering
+
+![fzf-style search, regex, a column filter, the info panel and the help screen](search.gif)
+
+`i` or `/` searches. Terms are anded, `!` excludes, a lone `|` is or, and
+`Ctrl-r` in the box switches to a regular expression. `f` filters only the
+column under the cursor, `c` clears everything, `v` hides the info panel and
+`?` lists every key.
+
+## Managing the list from the picker
+
+![n adds a URL, p makes it a git remote, o browses one once, d removes](picker.gif)
+
+`n` adds a URL to the collected list, `p` turns a collected remote into a real
+git remote (the dot), `o` browses a URL once without saving it, and `d` removes
+a collected remote after a `y`.
 
 ## Collecting from merges
 

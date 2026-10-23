@@ -1,10 +1,10 @@
 ---
 id: TASK-32
 title: Re-record the demos for the new keys and status lines
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-22T06:02:00Z'
-updated_date: '2026-10-22T20:02:00Z'
+updated_date: '2026-10-23T03:14:00Z'
 labels: []
 dependencies:
   - TASK-35
@@ -20,11 +20,11 @@ Several changes since the demos were recorded show on screen: the remote hints n
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 demo.gif, sorting.gif, hide.gif and viewers.gif match the current status lines
-- [ ] #2 A demo shows n, o, p and d in the remote list
-- [ ] #3 A demo shows the search syntax and Ctrl-r regex
-- [ ] #4 docs/demo/README.md embeds the new demos
-- [ ] #5 The maintainer has reviewed each in a browser before it is committed
+- [x] #1 demo.gif, sorting.gif, hide.gif and viewers.gif match the current status lines
+- [x] #2 A demo shows n, o, p and d in the remote list
+- [x] #3 A demo shows the search syntax and Ctrl-r regex
+- [x] #4 docs/demo/README.md embeds the new demos
+- [x] #5 The maintainer has reviewed each in a browser before it is committed
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -34,3 +34,9 @@ TASK-35 changed the keys: demo.tape, hide.tape and sorting.tape still send h/l/r
 
 Since this was written: the multi-select highlights ranges with J/K, remote rows have a gutter dot, the third column is headed source, f filters a column in input boxes under the header (the cursor underline is on the box), c clears search, filters and sort, and ? opens a help overlay. The tapes, the demos README and the GIF captions need to match, and a demo of ? and f is worth adding.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Re-recorded demo, sorting, hide, viewers, merges, themes and trail for the new layout and keys. Added picker.gif (n, p, o, d) and search.gif (search syntax, Ctrl-r, f, c, v, ?). Updated the demos README. Reviewed by the maintainer in a browser.
+<!-- SECTION:FINAL_SUMMARY:END -->

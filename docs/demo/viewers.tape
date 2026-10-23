@@ -24,7 +24,10 @@ Hide
 Wait+Screen@120s /refs of net/
 Show
 Sleep 600ms
-Type "j"
+Type "i"
+Type "heads/main"
+Sleep 400ms
+Escape
 Sleep 500ms
 Enter
 Hide
@@ -46,7 +49,10 @@ Hide
 Wait+Screen@120s /refs of net/
 Show
 Sleep 600ms
-Type "j"
+Type "i"
+Type "heads/main"
+Sleep 400ms
+Escape
 Sleep 500ms
 Enter
 Hide
@@ -68,7 +74,10 @@ Hide
 Wait+Screen@120s /refs of net/
 Show
 Sleep 600ms
-Type "j"
+Type "i"
+Type "heads/main"
+Sleep 400ms
+Escape
 Sleep 500ms
 Enter
 Hide
@@ -92,7 +101,10 @@ Hide
 Wait+Screen@120s /refs of net/
 Show
 Sleep 600ms
-Type "j"
+Type "i"
+Type "heads/main"
+Sleep 400ms
+Escape
 Sleep 500ms
 Enter
 Hide

@@ -23,14 +23,16 @@ Sleep 600ms
 Escape
 Sleep 3500ms
 
-# Sort mode: h and l move the sort column, the header shows an arrow.
+# s sorts the column under the column cursor: ascending, with v6.2 before v6.10.
 Type "s"
-Sleep 1500ms
-Type "l"
 Sleep 3500ms
 
-# r reverses it, so the newest release is on top.
-Type "r"
+# A second press runs it descending, so the newest release is on top.
+Type "s"
 Sleep 3500ms
+
+# A third turns the sort off and restores git's order.
+Type "s"
+Sleep 3s
 Type "q"
 Sleep 1s
