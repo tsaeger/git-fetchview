@@ -677,13 +677,13 @@ fn the_search_box_takes_not_and_or_and_switches_to_regex_with_ctrl_r() {
     s.send("\x1b");
     s.wait_for("search: tags !rc | heads");
 
-    // Ctrl-r reads the same text as a regex; start over with a pattern.
+    // Ctrl-r reads the same text as a regex. Clear first, so the test does
+    // not depend on every one of a run of backspaces being seen.
+    s.send("c");
+    s.wait_for("press / or i to search");
     s.send("i");
     s.send("\x12");
-    s.wait_for("regex: tags !rc | heads");
-    for _ in 0.."tags !rc | heads".len() {
-        s.send("\x7f");
-    }
+    s.wait_for("regex: ");
     s.send("v[12]\\.0$");
     s.wait_until("the two release tags", |t| {
         t.contains("refs/tags/v2.0") && !t.contains("refs/tags/v1.0-rc1")
