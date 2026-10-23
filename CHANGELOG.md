@@ -7,6 +7,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-23
+
+### Added
+
+- **tui:** **BREAKING** Sort with one key and a column cursor (24b601f)
+- **tui:** Space advances and J/K highlight a range in add (b7ca0ec)
+- **tui:** C clears the sort as well as the search (5ab04c7)
+- **tui:** **BREAKING** Head the third column source, not tags (3e6b84e)
+- **tui:** Mark real git remotes with a gutter dot (9e7a0ae)
+- **tui:** Per-column filters in input boxes under the header (ada1f64)
+- **tui:** ? shows every key in one overlay (336b530)
+- **tui:** Size columns to content, elide the middle, add info panel (af707fb)
+
+### Documentation
+
+- **demo:** Re-record demos for the new layout and keys (d75c139)
+
+### Fixed
+
+- **tui:** Tighten the gutter and set the help panel apart (b808f23)
+
+### Tests
+
+- **pty:** Clear the search box instead of counting backspaces (873d0cc)
 ## [0.1.1] - 2026-10-22
 
 ### Added

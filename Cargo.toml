@@ -3,7 +3,7 @@
 
 [package]
 name = "git-fetchview"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 description = "Pick a remote and ref, fetch it, and open it in tig, printing the plain git commands as you go"
 license = "MIT"
