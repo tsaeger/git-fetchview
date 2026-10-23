@@ -1,0 +1,55 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+:root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--fg:#e6edf3;--mute:#8b949e;--acc:#3fe0b5;--acc2:#58a6ff;--warn:#e3b341}
+*{box-sizing:border-box;margin:0}
+html,body{width:1280px;height:640px;background:var(--bg);overflow:hidden}
+body{font-family:Menlo,"SF Mono",monospace;color:var(--fg);position:relative}
+.glow{position:absolute;right:-200px;top:-200px;width:800px;height:800px;background:radial-gradient(circle,rgba(63,224,181,.13),transparent 65%)}
+.wrap{position:absolute;inset:0;padding:0 80px;display:flex;align-items:center;justify-content:space-between;gap:56px}
+.left{width:560px}
+.prompt{color:var(--mute);font-size:26px;margin-bottom:18px}
+.prompt b{color:var(--acc);font-weight:400}
+h1{font-size:68px;line-height:1.05;font-weight:700;letter-spacing:-2px}
+h1 span{color:var(--acc)}
+.cur{display:inline-block;width:34px;height:62px;background:var(--acc);vertical-align:-8px;margin-left:8px}
+.tag{margin-top:30px;font-size:25px;line-height:1.5;color:var(--mute)}
+.tag em{color:var(--fg);font-style:normal}
+.flow{margin-top:38px;display:flex;gap:12px;align-items:center;font-size:19px}
+.flow i{font-style:normal;padding:7px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.flow s{text-decoration:none;color:var(--acc)}
+.term{width:520px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.5);overflow:hidden}
+.bar{height:38px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 16px;gap:8px}
+.bar u{width:12px;height:12px;border-radius:50%;background:#3a414a}
+.bar span{margin-left:12px;color:var(--mute);font-size:14px}
+.rows{padding:14px 0;font-size:17px}
+.r{display:flex;gap:14px;padding:7px 20px;white-space:nowrap}
+.r .g{color:var(--acc);width:34px}
+.r .h{color:var(--warn);width:72px}
+.r .s{color:var(--fg);overflow:hidden}
+.r .a{color:var(--acc2);margin-left:auto}
+.r.sel{background:rgba(63,224,181,.14);box-shadow:inset 3px 0 0 var(--acc)}
+.foot{border-top:1px solid var(--line);padding:10px 20px;font-size:14px;color:var(--mute)}
+.foot b{color:var(--acc);font-weight:400}
+</style></head><body>
+<div class="glow"></div>
+<div class="wrap">
+  <div class="left">
+    <div class="prompt"><b>$</b> git fv</div>
+    <h1>git <span>fetchview</span><span class="cur"></span></h1>
+    <p class="tag">Peek at any branch, tag or PR.<br><em>No remote. No checkout.</em></p>
+    <div class="flow"><i>remote</i><s>→</s><i>ref</i><s>→</s><i>tig</i></div>
+  </div>
+  <div class="term">
+    <div class="bar"><u></u><u></u><u></u><span>tig FETCH_HEAD</span></div>
+    <div class="rows">
+      <div class="r"><span class="g">●</span><span class="h">a41f9c2</span><span class="s">net: fix skb leak on error</span><span class="a">ab</span></div>
+      <div class="r sel"><span class="g">●</span><span class="h">7be03d1</span><span class="s">tcp: add rx window probe</span><span class="a">cd</span></div>
+      <div class="r"><span class="g">├╮</span><span class="h">19c8e47</span><span class="s">Merge branch 'pr/123'</span><span class="a">ef</span></div>
+      <div class="r"><span class="g">│●</span><span class="h">c05a6b8</span><span class="s">docs: clarify refs</span><span class="a">gh</span></div>
+      <div class="r"><span class="g">●│</span><span class="h">52d7f30</span><span class="s">fix: handle empty tag</span><span class="a">ab</span></div>
+      <div class="r"><span class="g">├╯</span><span class="h">e8b1204</span><span class="s">refactor: split picker</span><span class="a">cd</span></div>
+    </div>
+    <div class="foot"><b>FETCH_HEAD</b> · refs/pull/123/head</div>
+  </div>
+</div>
+</body></html>
